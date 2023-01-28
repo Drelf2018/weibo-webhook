@@ -1,0 +1,1 @@
+go run main.go post.go database.go utils.go --user=postgres --password=postgres --dbname=postgres
