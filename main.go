@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
@@ -31,13 +30,13 @@ func weibo(c *gin.Context) {
 
 // 提交博文
 func update(c *gin.Context) {
-	var post Post
-	c.Bind(&post)
-	res, err := post.Save()
-	checkErr(err)
-	line, err := res.RowsAffected()
-	checkErr(err)
-	fmt.Println(line)
+	token, ok := c.GetQuery("token")
+	if ok && token != "" {
+		var post Post
+		c.Bind(&post)
+		_, err := post.Save(token)
+		checkErr(err)
+	}
 }
 
 // 运行 gin 服务器
