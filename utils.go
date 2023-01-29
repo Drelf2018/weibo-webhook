@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
 	"strings"
@@ -9,11 +8,22 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// 一条博文包含的信息（暂时）后续还需添加诸如头像、签名等参数
+// 一条博文包含的信息
 type Post struct {
-	Mid  int64  `form:"mid" json:"mid"`
-	Time int64  `form:"time" json:"time"`
-	Text string `form:"text" json:"text"`
+	Mid    int64  `form:"mid" json:"mid"`
+	Time   int64  `form:"time" json:"time"`
+	Text   string `form:"text" json:"text"`
+	Source string `form:"source" json:"source"`
+
+	Uid      int64  `form:"uid" json:"uid"`
+	Name     string `form:"name" json:"name"`
+	Face     string `form:"face" json:"face"`
+	Follow   string `form:"follow" json:"follow"`
+	Follower string `form:"follower" json:"follower"`
+	Desc     string `form:"description" json:"description"`
+
+	PicUrls []string `form:"picUrls" json:"picUrls"`
+	Repost  *Post    `form:"repost,omitempty" json:"repost"`
 }
 
 // 过滤函数
@@ -33,6 +43,7 @@ type config struct {
 	dbname   string
 }
 
+// 获取命令行参数
 func (cfg config) Pasre() string {
 	flag.StringVar(&cfg.user, "user", "postgres", "用户名")
 	flag.StringVar(&cfg.password, "password", "postgres", "密码")
@@ -50,15 +61,12 @@ type User struct {
 	url      string
 }
 
+// 拼接监控
 func (user *User) WatchToValue() string {
 	return strings.Join(user.watch, ",")
 }
 
-func (user *User) ValueToWatch(value string) []string {
-	user.watch = strings.Split(value, ",")
-	return user.watch
-}
-
+// 生成随机 token
 func (user *User) GetNewToken() string {
 	user.token = uuid.NewV4().String()
 	return user.token
@@ -72,26 +80,11 @@ func checkErr(err error) bool {
 	}
 }
 
-func Query(db *sql.DB, sql string, fn func(*sql.Rows) bool, args ...any) {
-	rows, err := db.Query(sql, args...)
-	checkErr(err)
-	defer rows.Close()
-
-	// 逐条获取值
-	if rows != nil {
-		for rows.Next() {
-			if fn(rows) {
-				break
-			}
-		}
+func printErr(err error) bool {
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+		return false
+	} else {
+		return true
 	}
-}
-
-func init() {
-	// watch := []string{"1", "2"}
-	// user := User{2, "xyw924...", "2", 3, watch, "localhost2"}
-	// fmt.Printf("user.GetNewToken(): %v\n", user.GetNewToken())
-	// fmt.Printf("user: %v\n", user)
-	// InsertUser(user)
-	GetUrlByWatch("1")
 }

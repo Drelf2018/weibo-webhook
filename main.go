@@ -34,8 +34,7 @@ func update(c *gin.Context) {
 	if ok && token != "" {
 		var post Post
 		c.Bind(&post)
-		_, err := post.Save(token)
-		checkErr(err)
+		post.Save(token)
 	}
 }
 
