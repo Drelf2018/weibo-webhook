@@ -64,7 +64,15 @@ func init() {
 		description text
 	)`)
 	panicErr(err)
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users(uid bigint,password text,token text,level bigint,watch text,url text)")
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS users(
+		uid bigint NOT NULL PRIMARY KEY,
+		password text,
+		token text,
+		level bigint,
+		watch text,
+		url text
+	)`)
 	panicErr(err)
 
 	// 初始化插入语句
@@ -145,7 +153,7 @@ func SavePictures(urls []string) string {
 
 // 向数据库插入一位用户。
 func InsertUser(user User) (sql.Result, error) {
-	return insertUser.Exec(user.uid, user.password, user.token, user.level, user.WatchToValue(), user.url)
+	return insertUser.Exec(user.Uid, user.Password, user.Token, user.Level, user.WatchToValue(), user.Url)
 }
 
 // 返回数据库中所有图片。
@@ -156,7 +164,7 @@ func GetAllPictures() (Pictures []string) {
 		if printErr(err) {
 			Pictures = append(Pictures, url)
 		}
-	}, "select url from pictures")
+	}, "select url from pictures order by id")
 	return
 }
 
@@ -203,7 +211,7 @@ func GetAllPost() (PostList []Post) {
 			}
 			PostList = append(PostList, post)
 		}
-	}, "select * from posts")
+	}, "select * from posts order by id")
 	return
 }
 

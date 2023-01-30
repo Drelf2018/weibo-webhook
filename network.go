@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -38,7 +39,11 @@ func Download(url, line string) {
 }
 
 func WebhookByPost(post Post) {
-	for _, url := range GetUrlsByWatch(post.Type + post.Uid) {
-		fmt.Printf("url: %v\n", url)
+	dataByte, err := json.Marshal(post)
+	if printErr(err) {
+		bodyReader := bytes.NewReader(dataByte)
+		for _, url := range GetUrlsByWatch(post.Type + post.Uid) {
+			http.Post(url, "application/json;charset=utf-8", bodyReader)
+		}
 	}
 }

@@ -49,12 +49,40 @@ func update(c *gin.Context) {
 	}
 }
 
+// 注册
+func Register(c *gin.Context) {
+	var user User
+	err := c.Bind(&user)
+	if printErr(err) {
+		user.GetNewToken()
+		user.Level = 5
+		_, err := InsertUser(user)
+		if printErr(err) {
+			c.JSON(200, gin.H{
+				"code": 0,
+				"data": user.Token,
+			})
+		} else {
+			c.JSON(200, gin.H{
+				"code":  1,
+				"error": err.Error(),
+			})
+		}
+	} else {
+		c.JSON(400, gin.H{
+			"code":  2,
+			"error": err.Error(),
+		})
+	}
+}
+
 // 运行 gin 服务器
 func main() {
 	r := gin.Default()
 
 	r.GET("weibo", weibo)
 	r.POST("update", update)
+	r.POST("register", Register)
 
 	// listen and serve on 0.0.0.0:8080
 	r.Run()

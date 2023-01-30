@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -39,38 +40,43 @@ func Filter(s []Post, fn func(Post) bool) []Post {
 }
 
 type config struct {
-	user     string
-	password string
-	dbname   string
+	User     string
+	Password string
+	DBname   string
+	Debug    bool
 }
 
 // 获取命令行参数
 func (cfg config) Pasre() string {
-	flag.StringVar(&cfg.user, "user", "postgres", "用户名")
-	flag.StringVar(&cfg.password, "password", "postgres", "密码")
-	flag.StringVar(&cfg.dbname, "dbname", "postgres", "库名")
+	flag.StringVar(&cfg.User, "user", "postgres", "用户名")
+	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
+	flag.StringVar(&cfg.DBname, "dbname", "postgres", "库名")
+	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
 	flag.Parse()
-	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.user, cfg.password, cfg.dbname)
+	if !cfg.Debug {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.User, cfg.Password, cfg.DBname)
 }
 
 type User struct {
-	uid      int64
-	password string
-	token    string
-	level    int64
-	watch    []string
-	url      string
+	Uid      int64  `form:"uid" json:"uid"`
+	Password string `form:"password" json:"password"`
+	Token    string
+	Level    int64
+	Watch    []string `form:"watch" json:"watch"`
+	Url      string   `form:"url" json:"url"`
 }
 
 // 拼接监控
 func (user *User) WatchToValue() string {
-	return strings.Join(user.watch, ",")
+	return strings.Join(user.Watch, ",")
 }
 
 // 生成随机 token
 func (user *User) GetNewToken() string {
-	user.token = uuid.NewV4().String()
-	return user.token
+	user.Token = uuid.NewV4().String()
+	return user.Token
 }
 
 func panicErr(err error) bool {

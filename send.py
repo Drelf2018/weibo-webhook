@@ -1,8 +1,16 @@
 import httpx
 import json
 
+res = httpx.post("http://localhost:8080/register", data={
+    "uid": 188888131,
+	"password": "testtest",
+	"watch": ["weibo434334701"],
+	"url": "http://localhost:5664/recv",
+})
+print(res.text)
+
 for text in ["测试测试我爱你的程度", "测试测试我爱你的程", "试测试我爱你的程度", "测试测试我爱你的"]:
-    res = httpx.post("http://localhost:8080/update?token=c1be3504-6c86-4cc6-9357-b1aac781c5f2", data={
+    res = httpx.post("http://localhost:8080/update?token=fa22e178-6dc6-4413-afa5-1455c846ebf0", data={
         "mid": "100",
         "time": 2,
         "text": text,
