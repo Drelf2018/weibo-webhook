@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +27,7 @@ func openDB() *sql.DB {
 	// 注释的这行代码是正式使用 postgresql 数据库
 	// 测试的时候用文件 test.db 的 sqlite3 数据库
 	// db, err := sql.Open("sqlite3", "./test.db")
-	checkErr(err)
+	panicErr(err)
 
 	//创建一个具有5秒超时期限的上下文。
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -36,7 +35,7 @@ func openDB() *sql.DB {
 
 	//使用PingContext()建立到数据库的新连接，并传入上下文信息，连接超时就返回
 	err = db.PingContext(ctx)
-	checkErr(err)
+	panicErr(err)
 
 	// 返回sql.DB连接池
 	return db
@@ -46,38 +45,39 @@ func init() {
 	var err error
 	// 初始化表 不存在则新建
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS pictures(id bigint NOT NULL GENERATED ALWAYS AS IDENTITY,url text,local text)")
-	checkErr(err)
+	panicErr(err)
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS posts(
 		id       bigint NOT NULL GENERATED ALWAYS AS IDENTITY,
-		mid      bigint,
+		mid      text,
 		time     bigint,
 		text     text,
+		type	 text,
 		source   text,
 		picUrls  text,
 		repost   text,
-		uid      bigint,
+		uid      text,
 		name     text,
 		face     text,
 		follow   text,
 		follower text,
 		description text
 	)`)
-	checkErr(err)
+	panicErr(err)
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users(uid bigint,password text,token text,level bigint,watch text,url text)")
-	checkErr(err)
+	panicErr(err)
 
 	// 初始化插入语句
 	insertPic, err = db.Prepare("INSERT INTO pictures(url,local) VALUES($1,$2) returning id")
-	checkErr(err)
+	panicErr(err)
 	insertPost, err = db.Prepare(`
-		INSERT INTO posts(mid,time,text,source,picUrls,repost,uid,name,face,follow,follower,description)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		INSERT INTO posts(mid,time,text,type,source,picUrls,repost,uid,name,face,follow,follower,description)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		returning id
 	`)
-	checkErr(err)
+	panicErr(err)
 	insertUser, err = db.Prepare("INSERT INTO users(uid,password,token,level,watch,url) VALUES($1,$2,$3,$4,$5,$6)")
-	checkErr(err)
+	panicErr(err)
 }
 
 // 向数据库插入一条博文。
@@ -90,6 +90,7 @@ func InsertSinglePost(post *Post, repostID int64) (postID int64) {
 		post.Mid,
 		post.Time,
 		post.Text,
+		post.Type,
 		post.Source,
 		SavePictures(post.PicUrls),
 		repostID,
@@ -107,8 +108,9 @@ func InsertSinglePost(post *Post, repostID int64) (postID int64) {
 }
 
 // 插入接收到的数据，包含被转发微博
-func InsertPost(post *Post) int64 {
-	return InsertSinglePost(post, InsertSinglePost(post.Repost, 0))
+func InsertPost(post *Post) {
+	InsertSinglePost(post, InsertSinglePost(post.Repost, 0))
+	WebhookByPost(*post)
 }
 
 // 向数据库插入一张图片
@@ -123,6 +125,10 @@ func InsertPic(url string) (line string) {
 	} else {
 		return
 	}
+}
+
+func UpdatePic(local, line string) (sql.Result, error) {
+	return db.Exec("UPDATE pictures SET local=$1 WHERE id=$2;", local, line)
 }
 
 // 保存图片合集
@@ -167,6 +173,7 @@ func GetAllPost() (PostList []Post) {
 			&post.Mid,
 			&post.Time,
 			&post.Text,
+			&post.Type,
 			&post.Source,
 			&PicUrls,
 			&repostID,
@@ -201,28 +208,29 @@ func GetAllPost() (PostList []Post) {
 }
 
 // 根据 token 返回级别。
-func GetLevelByToken(token string) (level int64) {
+func GetLevelByToken(token string) (level float64) {
 	ForEach(func(rows *sql.Rows) {
-		if printErr(rows.Scan(&level)) {
-			fmt.Println(level)
+		if !printErr(rows.Scan(&level)) {
+			level = 0
 		}
 	}, "select level from users where token=$1", token)
 	return
 }
 
 // 根据 watch 返回 url。
-func GetUrlByWatch(watch string) {
+func GetUrlsByWatch(watch string) (Urls []string) {
 	ForEach(func(rows *sql.Rows) {
 		var url string
 		if printErr(rows.Scan(&url)) {
-			fmt.Printf("user: %v\n", url)
+			Urls = append(Urls, url)
 		}
 	}, "select url from users where position($1 in watch) > 0", watch)
+	return
 }
 
 func ForEach(fn func(*sql.Rows), cmd string, args ...any) {
 	rows, err := db.Query(cmd, args...)
-	checkErr(err)
+	panicErr(err)
 	defer rows.Close()
 
 	// 逐条获取值

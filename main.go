@@ -9,13 +9,13 @@ import (
 
 // 获取 beginTs 时间之后的所有博文
 func weibo(c *gin.Context) {
-	BeginTime := time.Now().Unix()
-	beginTs, ok := c.GetQuery("beginTs")
-	if ok && beginTs != "" {
+	TimeNow := float64(time.Now().Unix() - 5)
+	beginTs := c.Query("beginTs")
+	if beginTs != "" {
 		var err error
-		BeginTime, err = strconv.ParseInt(beginTs, 10, 64)
+		TimeNow, err = strconv.ParseFloat(beginTs, 64)
 		if err != nil {
-			c.JSON(200, gin.H{
+			c.JSON(400, gin.H{
 				"code":  1,
 				"error": err.Error(),
 			})
@@ -24,7 +24,7 @@ func weibo(c *gin.Context) {
 	}
 	c.JSON(200, gin.H{
 		"code": 0,
-		"data": GetPostByTime(BeginTime),
+		"data": GetPostByTime(TimeNow),
 	})
 }
 
@@ -33,8 +33,19 @@ func update(c *gin.Context) {
 	token, ok := c.GetQuery("token")
 	if ok && token != "" {
 		var post Post
-		c.Bind(&post)
-		post.Save(token)
+		err := c.Bind(&post)
+		if err == nil {
+			code, msg := post.Save(token)
+			c.JSON(200, gin.H{
+				"code": code,
+				"data": msg,
+			})
+		} else {
+			c.JSON(400, gin.H{
+				"code":  3,
+				"error": err.Error(),
+			})
+		}
 	}
 }
 

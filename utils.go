@@ -10,12 +10,13 @@ import (
 
 // 一条博文包含的信息
 type Post struct {
-	Mid    int64  `form:"mid" json:"mid"`
-	Time   int64  `form:"time" json:"time"`
-	Text   string `form:"text" json:"text"`
-	Source string `form:"source" json:"source"`
+	Mid    string  `form:"mid" json:"mid"`
+	Time   float64 `form:"time" json:"time"`
+	Text   string  `form:"text" json:"text"`
+	Type   string  `form:"type" json:"type"`
+	Source string  `form:"source" json:"source"`
 
-	Uid      int64  `form:"uid" json:"uid"`
+	Uid      string `form:"uid" json:"uid"`
 	Name     string `form:"name" json:"name"`
 	Face     string `form:"face" json:"face"`
 	Follow   string `form:"follow" json:"follow"`
@@ -72,7 +73,7 @@ func (user *User) GetNewToken() string {
 	return user.token
 }
 
-func checkErr(err error) bool {
+func panicErr(err error) bool {
 	if err != nil {
 		panic(err)
 	} else {
@@ -87,4 +88,48 @@ func printErr(err error) bool {
 	} else {
 		return true
 	}
+}
+
+// 文本相似性判断
+//
+// 参考 https://blog.csdn.net/weixin_30402085/article/details/96165537
+func SimilarText(first, second string) float64 {
+	var similarText func(string, string, int, int) int
+	similarText = func(str1, str2 string, len1, len2 int) int {
+		var sum, max int
+		pos1, pos2 := 0, 0
+
+		// Find the longest segment of the same section in two strings
+		for i := 0; i < len1; i++ {
+			for j := 0; j < len2; j++ {
+				for l := 0; (i+l < len1) && (j+l < len2) && (str1[i+l] == str2[j+l]); l++ {
+					if l+1 > max {
+						max = l + 1
+						pos1 = i
+						pos2 = j
+					}
+				}
+			}
+		}
+
+		if sum = max; sum > 0 {
+			if pos1 > 0 && pos2 > 0 {
+				sum += similarText(str1, str2, pos1, pos2)
+			}
+			if (pos1+max < len1) && (pos2+max < len2) {
+				s1 := []byte(str1)
+				s2 := []byte(str2)
+				sum += similarText(string(s1[pos1+max:]), string(s2[pos2+max:]), len1-pos1-max, len2-pos2-max)
+			}
+		}
+
+		return sum
+	}
+
+	l1, l2 := len(first), len(second)
+	if l1+l2 == 0 {
+		return 0
+	}
+	sim := similarText(first, second, l1, l2)
+	return float64(sim*2) / float64(l1+l2)
 }
