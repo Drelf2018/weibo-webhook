@@ -6,7 +6,7 @@
 go run main.go post.go database.go utils.go --user=postgres --password=postgres --dbname=postgres
 ```
 
-目录下 `test.py` 为测试脚本，用于上传一条博文。
+目录下 `test.py` 为测试脚本，~~用于上传一条博文。~~ 此处格式有重要修改 [详见源码](https://github.com/Drelf2018/weibo-webhook/blob/main/test.py)
 
 ```python
 import httpx
