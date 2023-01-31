@@ -7,10 +7,10 @@ res = httpx.post("http://localhost:8080/register", data={
 	"watch": ["weibo434334701"],
 	"url": "http://localhost:5664/recv",
 })
-print(res.text)
+token = res.json()["data"]
 
 for text in ["测试测试我爱你的程度", "测试测试我爱你的程", "试测试我爱你的程度", "测试测试我爱你的"]:
-    res = httpx.post("http://localhost:8080/update?token=fa22e178-6dc6-4413-afa5-1455c846ebf0", data={
+    res = httpx.post(f"http://localhost:8080/update?token={token}", data={
         "mid": "100",
         "time": 2,
         "text": text,

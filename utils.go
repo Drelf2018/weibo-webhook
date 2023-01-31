@@ -39,7 +39,7 @@ func Filter(s []Post, fn func(Post) bool) []Post {
 	return result
 }
 
-type config struct {
+type Config struct {
 	User     string
 	Password string
 	DBname   string
@@ -47,15 +47,19 @@ type config struct {
 }
 
 // 获取命令行参数
-func (cfg config) Pasre() string {
+func (cfg *Config) Pasre() bool {
 	flag.StringVar(&cfg.User, "user", "postgres", "用户名")
 	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
-	flag.StringVar(&cfg.DBname, "dbname", "postgres", "库名")
+	flag.StringVar(&cfg.DBname, "dbname", "", "库名")
 	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
 	flag.Parse()
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
 	}
+	return cfg.DBname == ""
+}
+
+func (cfg *Config) Key() string {
 	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.User, cfg.Password, cfg.DBname)
 }
 

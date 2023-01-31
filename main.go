@@ -55,7 +55,7 @@ func Register(c *gin.Context) {
 	err := c.Bind(&user)
 	if printErr(err) {
 		user.GetNewToken()
-		user.Level = 5
+		user.Level = 2
 		_, err := InsertUser(user)
 		if printErr(err) {
 			c.JSON(200, gin.H{

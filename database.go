@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -13,20 +14,26 @@ import (
 
 var db = openDB()
 var insertPic, insertPost, insertUser *sql.Stmt
+var autoIncrement string
+var watch2sql func(string) string
 
 // 打开数据库并验证
 //
 // 参考 http://events.jianshu.io/p/86753f1e5585
-func openDB() *sql.DB {
+func openDB() (db *sql.DB) {
 	// 从命令行读取数据库连接参数
-	var cfg config
-	// fmt.Printf("cfg.Pasre(): %v\n", cfg.Pasre())
-	db, err := sql.Open("postgres", cfg.Pasre())
-
+	var cfg Config
+	var err error
 	// 使用sql.Open()创建一个空连接池
-	// 注释的这行代码是正式使用 postgresql 数据库
-	// 测试的时候用文件 test.db 的 sqlite3 数据库
-	// db, err := sql.Open("sqlite3", "./test.db")
+	if cfg.Pasre() {
+		autoIncrement = "INTEGER PRIMARY KEY AUTOINCREMENT"
+		watch2sql = func(watch string) string { return "select url from users where watch Like '%" + watch + "%'" }
+		db, err = sql.Open("sqlite3", "./sqlite3.db")
+	} else {
+		autoIncrement = "SERIAL PRIMARY KEY"
+		watch2sql = func(watch string) string { return "select url from users where position(" + watch + " in watch) > 0" }
+		db, err = sql.Open("postgres", cfg.Key())
+	}
 	panicErr(err)
 
 	//创建一个具有5秒超时期限的上下文。
@@ -44,11 +51,11 @@ func openDB() *sql.DB {
 func init() {
 	var err error
 	// 初始化表 不存在则新建
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS pictures(id bigint NOT NULL GENERATED ALWAYS AS IDENTITY,url text,local text)")
+	_, err = db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS pictures(id %v,url text,local text)", autoIncrement))
 	panicErr(err)
-	_, err = db.Exec(`
+	_, err = db.Exec(fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS posts(
-		id       bigint NOT NULL GENERATED ALWAYS AS IDENTITY,
+		id       %v,
 		mid      text,
 		time     bigint,
 		text     text,
@@ -62,17 +69,17 @@ func init() {
 		follow   text,
 		follower text,
 		description text
-	)`)
+	)`, autoIncrement))
 	panicErr(err)
-	_, err = db.Exec(`
+	_, err = db.Exec(fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS users(
-		uid bigint NOT NULL PRIMARY KEY,
+		uid %v,
 		password text,
 		token text,
 		level bigint,
 		watch text,
 		url text
-	)`)
+	)`, autoIncrement))
 	panicErr(err)
 
 	// 初始化插入语句
@@ -232,7 +239,7 @@ func GetUrlsByWatch(watch string) (Urls []string) {
 		if printErr(rows.Scan(&url)) {
 			Urls = append(Urls, url)
 		}
-	}, "select url from users where position($1 in watch) > 0", watch)
+	}, watch2sql(watch))
 	return
 }
 
