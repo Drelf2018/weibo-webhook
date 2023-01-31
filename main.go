@@ -78,12 +78,18 @@ func Register(c *gin.Context) {
 
 // 运行 gin 服务器
 func main() {
-	r := gin.Default()
+	credential := Credential{
+		188888131,
+	}
+	session := Session{0, make(map[int64]int64), true, credential}
+	session.run(true)
 
-	r.GET("weibo", weibo)
-	r.POST("update", update)
-	r.POST("register", Register)
+	// r := gin.Default()
 
-	// listen and serve on 0.0.0.0:8080
-	r.Run()
+	// r.GET("weibo", weibo)
+	// r.POST("update", update)
+	// r.POST("register", Register)
+
+	// // listen and serve on 0.0.0.0:8080
+	// r.Run()
 }
