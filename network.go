@@ -18,6 +18,7 @@ func MakeDir(path string) {
 	}
 }
 
+// 下载图片到本地并更新数据库
 func Download(url, line string) {
 	resp, err := http.Get(url)
 	panicErr(err)
@@ -38,7 +39,8 @@ func Download(url, line string) {
 	panicErr(err)
 }
 
-func WebhookByPost(post Post) {
+// 将 Post 信息 Post 给用户 什么双关
+func Webhook(post Post) {
 	dataByte, err := json.Marshal(post)
 	if printErr(err) {
 		bodyReader := bytes.NewReader(dataByte)

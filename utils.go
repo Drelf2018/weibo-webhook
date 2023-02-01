@@ -3,10 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strings"
-
-	"github.com/gin-gonic/gin"
-	uuid "github.com/satori/go.uuid"
 )
 
 // 一条博文包含的信息
@@ -29,8 +25,8 @@ type Post struct {
 }
 
 // 过滤函数
-func Filter(s []Post, fn func(Post) bool) []Post {
-	result := make([]Post, 0, len(s))
+func Filter[T any](s []T, fn func(T) bool) []T {
+	result := make([]T, 0, len(s))
 	for _, v := range s {
 		if fn(v) {
 			result = append(result, v)
@@ -39,48 +35,56 @@ func Filter(s []Post, fn func(Post) bool) []Post {
 	return result
 }
 
+// 三目运算符
+func Any[T any](Expr bool, TrueReturn, FalseReturn T) T {
+	if Expr {
+		return TrueReturn
+	}
+	return FalseReturn
+}
+
+// 直接赋值的三目运算符
+func AnyTo[T any](Expr bool, Pointer *T, Value T) {
+	if Expr {
+		*Pointer = Value
+	}
+}
+
 type Config struct {
-	User     string
-	Password string
-	DBname   string
-	Debug    bool
+	User       string
+	Password   string
+	DBname     string
+	DriverName string
+	Debug      bool
 }
 
 // 获取命令行参数
-func (cfg *Config) Pasre() bool {
+func (cfg *Config) Pasre() {
 	flag.StringVar(&cfg.User, "user", "postgres", "用户名")
 	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
 	flag.StringVar(&cfg.DBname, "dbname", "", "库名")
 	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
 	flag.Parse()
-	if !cfg.Debug {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	return cfg.DBname == ""
+	cfg.DriverName = Any(cfg.DBname == "", "sqlite3", "postgres")
 }
 
-func (cfg *Config) Key() string {
+// 是否为 SQLite 数据库参数
+func (cfg Config) isSQLite() bool {
+	return cfg.DriverName == "sqlite3"
+}
+
+// Postgres 数据库所需参数
+func (cfg Config) Key() string {
 	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.User, cfg.Password, cfg.DBname)
 }
 
 type User struct {
-	Uid      int64  `form:"uid" json:"uid"`
-	Password string `form:"password" json:"password"`
-	Token    string
-	Level    int64
-	Watch    []string `form:"watch" json:"watch"`
-	Url      string   `form:"url" json:"url"`
-}
-
-// 拼接监控
-func (user *User) WatchToValue() string {
-	return strings.Join(user.Watch, ",")
-}
-
-// 生成随机 token
-func (user *User) GetNewToken() string {
-	user.Token = uuid.NewV4().String()
-	return user.Token
+	Uid   int64 `form:"uid" json:"uid"`
+	Token string
+	Level int64
+	XP    int64
+	Watch []string `form:"watch" json:"watch"`
+	Url   string   `form:"url" json:"url"`
 }
 
 func panicErr(err error) bool {

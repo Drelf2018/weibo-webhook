@@ -1,1 +1,1 @@
-go run main.go utils.go network.go database.go post.go session.go --user=postgres --password= --dbname=
+go run abandon.go utils.go database.go network.go post.go session.go --user=postgres --password= --dbname=

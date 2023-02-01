@@ -74,13 +74,15 @@ func (post *Post) Save(token string) (int64, string) {
 	// 得分超过阈值，插入数据库
 	if monitor.Score >= 1 {
 		// 插入相似度最高的
-		maxID := 0
+		MaxID := 0
 		for i, p := range monitor.Percent {
-			if p > monitor.Percent[maxID] {
-				maxID = i
-			}
+			AnyTo(p > monitor.Percent[MaxID], &MaxID, i)
 		}
-		go InsertPost(&monitor.Posts[maxID])
+
+		// 发布最终确定的消息并插入数据库
+		FinalPost := monitor.Posts[MaxID]
+		go Webhook(FinalPost)
+		FinalPost.Insert()
 
 		// 清理占用，但要留下 isPosted 避免重复提交
 		monitor.isPosted = true

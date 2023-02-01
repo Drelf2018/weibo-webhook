@@ -27,15 +27,11 @@ type Session struct {
 	credential Credential
 }
 
-type GetSessionData struct {
-	Data struct {
-		SessionList []struct {
-			TalkerID    int64 `json:"talker_id"`
-			SessionType int64 `json:"session_type"`
-			SessionTs   int64 `json:"session_ts"`
-			MaxSeqno    int64 `json:"max_seqno"`
-		} `json:"session_list"`
-	} `json:"data"`
+type SessionList struct {
+	TalkerID    int64 `json:"talker_id"`
+	SessionType int64 `json:"session_type"`
+	SessionTs   int64 `json:"session_ts"`
+	MaxSeqno    int64 `json:"max_seqno"`
 }
 
 type Event struct {
@@ -49,10 +45,18 @@ type Event struct {
 	MsgKey       int64  `json:"msg_key"`
 }
 
+type ApiData struct {
+	Data struct {
+		Messages    []Event       `json:"messages"`
+		SessionList []SessionList `json:"session_list"`
+	} `json:"data"`
+}
+
 type TextContent struct {
 	Content string `form:"content" json:"content"`
 }
 
+// 尝试解析文本消息
 func (event Event) GetContent() string {
 	var realContent TextContent
 	err := json.Unmarshal([]byte(event.Content), &realContent)
@@ -62,129 +66,106 @@ func (event Event) GetContent() string {
 	return ""
 }
 
-type FetchSessionMsgsData struct {
-	Data struct {
-		Messages []Event `json:"messages"`
-	} `json:"data"`
-}
+// 基础请求，自动添加请求头、Cookie
+func (session Session) Request(method string, url string, data string) []byte {
+	bodyReader := bytes.NewReader([]byte(data))
+	client := &http.Client{}
 
-func (session Session) Request(method string, url string, data SendMsgData) []byte {
-	dataByte, err := json.Marshal(data)
+	req, err := http.NewRequest(method, url, bodyReader)
 	if printErr(err) {
-		bodyReader := bytes.NewReader(dataByte)
-		client := &http.Client{}
-		fmt.Printf("url: %v\n", url)
-		req, err := http.NewRequest(method, url, bodyReader)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Add("Referer", "https://www.bilibili.com")
+		req.Header.Add("User-Agent", "Mozilla/5.0")
+		req.Header.Add("Cookie", session.credential.ToCookie())
+		resp, err := client.Do(req)
 		if printErr(err) {
-			req.Header.Set("Content-Type", "application/json; charset=utf-8")
-			req.Header.Add("Referer", "https://www.bilibili.com")
-			req.Header.Add("User-Agent", "Mozilla/5.0")
-			req.Header.Add("Cookie", session.credential.ToCookie())
-			resp, err := client.Do(req)
-			if printErr(err) {
-				body, _ := ioutil.ReadAll(resp.Body)
-				defer resp.Body.Close()
-				return body
-			}
+			body, _ := ioutil.ReadAll(resp.Body)
+			defer resp.Body.Close()
+			return body
 		}
 	}
 	return []byte{}
 }
 
-func (session *Session) FetchSessionMsgs(talkerID, sessionType, beginSeqno int64) {
+// 获取指定用户的最近 30 条消息
+func (session Session) FetchSessionMsgs(talkerID, sessionType, beginSeqno int64) {
 	Url := "https://api.vc.bilibili.com/svr_sync/v1/svr_sync/fetch_session_msgs"
 	Params := fmt.Sprintf("?talker_id=%v&session_type=%v&begin_seqno=%v", talkerID, sessionType, beginSeqno)
 
-	var fsmd FetchSessionMsgsData
-	json.Unmarshal(session.Request("GET", Url+Params, SendMsgData{}), &fsmd)
+	var Api ApiData
+	err := json.Unmarshal(session.Request("GET", Url+Params, ""), &Api)
+	panicErr(err)
 
-	for _, v := range fsmd.Data.Messages {
+	for _, v := range Api.Data.Messages {
 		if v.SenderUID != session.credential.DedeUserID || !session.exceptSelf {
+			user := GetUserByUID(v.SenderUID)
+			if user == nil {
+				session.reply(v, "获取对象失败，请联系管理员。")
+			}
 			switch v.GetContent() {
 			case "注册", "register", "token", "/注册", "/register", "/token":
-				session.reply(v, "token")
+				session.reply(v, user.Token)
+			case "我", "个人信息", "信息", "等级":
+				msg := fmt.Sprintf("权限：LV%v\n经验：%v\n监听列表：%v\n回传地址：%v密钥：%v", user.Level, user.XP, user.Watch, user.Url, user.Token)
+				session.reply(v, msg)
 			}
 		}
 	}
 }
 
-func (session *Session) NewSessions(beginTs int64) (gsd GetSessionData) {
+// 获取新接收的消息列表
+func (session Session) NewSessions(beginTs int64) []SessionList {
 	Url := "https://api.vc.bilibili.com/session_svr/v1/session_svr/new_sessions"
 	Params := fmt.Sprintf("?begin_ts=%v&build=0&mobi_app=web", beginTs)
 
-	json.Unmarshal(session.Request("GET", Url+Params, SendMsgData{}), &gsd)
-	return
+	var Api ApiData
+	err := json.Unmarshal(session.Request("GET", Url+Params, ""), &Api)
+	panicErr(err)
+
+	return Api.Data.SessionList
 }
 
-func (session *Session) GetSessions(sessionType int64) (gsd GetSessionData) {
+// 获取已有消息列表
+func (session Session) GetSessions(sessionType int64) []SessionList {
 	Url := "https://api.vc.bilibili.com/session_svr/v1/session_svr/get_sessions"
 	Params := fmt.Sprintf("?session_type=%v&group_fold=1&unfollow_fold=0&sort_rule=2&build=0&mobi_app=web", sessionType)
 
-	json.Unmarshal(session.Request("GET", Url+Params, SendMsgData{}), &gsd)
-	return
+	var Api ApiData
+	err := json.Unmarshal(session.Request("GET", Url+Params, ""), &Api)
+	panicErr(err)
+
+	return Api.Data.SessionList
 }
 
-type SendMsgData struct {
-	MsgSenderUID      int64       `json:"msg[sender_uid]" form:"msg[sender_uid]"`
-	MsgReceiverID     int64       `json:"msg[receiver_id]" form:"msg[receiver_id]"`
-	MsgReceiverType   int64       `json:"msg[receiver_type]" form:"msg[receiver_type]"`
-	MsgMsgType        int64       `json:"msg[msg_type]" form:"msg[msg_type]"`
-	MsgMsgStatus      int64       `json:"msg[msg_status]" form:"msg[msg_status]"`
-	MsgContent        TextContent `json:"msg[content]" form:"msg[content]"`
-	MsgTimestamp      int64       `json:"msg[timestamp]" form:"msg[timestamp]"`
-	MsgNewFaceVersion int64       `json:"msg[new_face_version]" form:"msg[new_face_version]"`
-	MsgDevID          string      `json:"msg[dev_id]" form:"msg[dev_id]"`
-	FromFirework      int64       `json:"from_firework" form:"from_firework"`
-	Build             int64       `json:"build" form:"build"`
-	MobiApp           string      `json:"mobi_app" form:"mobi_app"`
-	CsrfToken         string      `json:"csrf_token" form:"csrf_token"`
-	Csrf              string      `json:"csrf" form:"csrf"`
-}
-
+// 发送消息
 func (session Session) SendMsg(ReceiverID int64, content string) {
 	Url := "https://api.vc.bilibili.com/web_im/v1/web_im/send_msg"
-	data := SendMsgData{
-		session.credential.DedeUserID,
-		ReceiverID,
-		1,
-		1,
-		0,
-		TextContent{content},
-		time.Now().Unix(),
-		0,
-		"94669EA6-CB4B-47B0-874A-42E07DC2145B",
-		0,
-		0,
-		"web",
-		session.credential.bili_jct,
-		session.credential.bili_jct,
-	}
-	resp := session.Request("POST", Url, data)
-	fmt.Printf("rdata: %v\n", string(resp))
+	Format := "msg[sender_uid]=%v&msg[receiver_id]=%v&msg[receiver_type]=1&msg[msg_type]=1&msg[msg_status]=0&msg[content]={\"content\":\"%v\"}&msg[dev_id]=B9A37BF3-AA9D-4076-A4D3-366AC8C4C5DB&msg[new_face_version]=0&msg[timestamp]=%v&from_filework=0&build=0&mobi_app=web&csrf=%v&csrf_token=%v"
+	Data := fmt.Sprintf(Format, session.credential.DedeUserID, ReceiverID, content, time.Now().Unix(), session.credential.bili_jct, session.credential.bili_jct)
+
+	session.Request("POST", Url, Data)
 }
 
+// 快速回复消息
 func (session Session) reply(event Event, content string) {
 	if session.credential.DedeUserID != event.SenderUID {
 		session.SendMsg(event.SenderUID, content)
 	}
 }
 
-func (session *Session) run(except_self bool) {
+// 间隔轮询
+func (session Session) run(Interval int64) {
 	// 初始化 只接收开始运行后的新消息
-	GSD := session.GetSessions(4)
-	for _, v := range GSD.Data.SessionList {
+	for _, v := range session.GetSessions(4) {
 		session.maxSeqno[v.TalkerID] = v.MaxSeqno
 	}
 
-	ticker := time.NewTicker(6 * time.Second)
+	ticker := time.NewTicker(time.Duration(Interval) * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		data := session.NewSessions(session.maxTs)
-		for _, v := range data.Data.SessionList {
-			if v.SessionTs > session.maxTs {
-				session.maxTs = v.SessionTs
-			}
+		for _, v := range session.NewSessions(session.maxTs) {
+			AnyTo(v.SessionTs > session.maxTs, &session.maxTs, v.SessionTs)
 			go session.FetchSessionMsgs(v.TalkerID, v.SessionType, session.maxSeqno[v.TalkerID])
 			session.maxSeqno[v.TalkerID] = v.MaxSeqno
 		}

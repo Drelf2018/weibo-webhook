@@ -49,47 +49,29 @@ func update(c *gin.Context) {
 	}
 }
 
-// 注册
-func Register(c *gin.Context) {
-	var user User
-	err := c.Bind(&user)
-	if printErr(err) {
-		user.GetNewToken()
-		user.Level = 2
-		_, err := InsertUser(user)
-		if printErr(err) {
-			c.JSON(200, gin.H{
-				"code": 0,
-				"data": user.Token,
-			})
-		} else {
-			c.JSON(200, gin.H{
-				"code":  1,
-				"error": err.Error(),
-			})
-		}
-	} else {
-		c.JSON(400, gin.H{
-			"code":  2,
-			"error": err.Error(),
-		})
-	}
+// 全局配置
+var cfg Config
+
+func init() {
+	// 从命令行读取数据库连接参数
+	cfg.Pasre()
 }
 
-// 运行 gin 服务器
 func main() {
+	// 启动b站私信监听
 	credential := Credential{
 		188888131,
 	}
-	session := Session{0, make(map[int64]int64), true, credential}
-	session.run(true)
+	go Session{0, make(map[int64]int64), true, credential}.run(5)
 
-	// r := gin.Default()
+	// 运行 gin 服务器
+	if !cfg.Debug {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	r := gin.Default()
 
-	// r.GET("weibo", weibo)
-	// r.POST("update", update)
-	// r.POST("register", Register)
+	r.GET("weibo", weibo)
+	r.POST("update", update)
 
-	// // listen and serve on 0.0.0.0:8080
-	// r.Run()
+	r.Run() // listen and serve on 0.0.0.0:8080
 }

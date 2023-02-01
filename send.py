@@ -2,7 +2,7 @@ import httpx
 import json
 
 res = httpx.post("http://localhost:8080/register", data={
-    "uid": 188888131,
+    "uid": 18,
 	"password": "testtest",
 	"watch": ["weibo434334701"],
 	"url": "http://localhost:5664/recv",
