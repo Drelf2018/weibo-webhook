@@ -21,13 +21,13 @@ httpx.post("http://localhost:8080/update", data={"mid": 2, "time": 3, "text": "�
 
 ---
 
-> 为什么主函数所在文件叫 `abandon.go` ?
+### 为什么主函数所在文件叫 `abandon.go` ?
 
 因为我发现一件事，就是本程序的数据都是从 ```database.go``` 中 `init()` 定义的 `db *sql.DB` 读取嘛，如果主函数文件叫 `main.go` 的话，在编译的时候会把 `database.go` 放在较后位置，导致 `post.go` 的 `init()` 从数据库取值的时候找不到。查了不少资料都说是根据文件名排序的，但是 `database.go` 明明在 `post.go` 前面啊，而且交换他们的文件名，再在主文件为 `main.go` 的情况下编译居然又能用了。
 
 <div align="center">
 
-
+![](https://user-images.githubusercontent.com/41439182/216071961-6487d0c1-2fb6-4480-a97e-34a73f0da460.png)
 
 <span style="color:grey">文件名排序图</span>
 
