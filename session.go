@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -98,16 +99,37 @@ func (session Session) FetchSessionMsgs(talkerID, sessionType, beginSeqno int64)
 
 	for _, v := range Api.Data.Messages {
 		if v.SenderUID != session.credential.DedeUserID || !session.exceptSelf {
-			user := GetUserByUID(v.SenderUID)
-			if user == nil {
-				session.reply(v, "获取对象失败，请联系管理员。")
+			// 分解指令
+			args := strings.Split(v.GetContent(), " ")
+			if len(args) < 1 {
+				continue
 			}
-			switch v.GetContent() {
-			case "注册", "register", "token", "/注册", "/register", "/token":
+			// 获取对应用户
+			var user User
+			if GetUserByUID(v.SenderUID, &user) != nil {
+				session.reply(v, "获取对象失败，请联系管理员。")
+				continue
+			}
+			// 执行指令
+			switch args[0] {
+			case "注册", "register", "token", "/register", "/token":
 				session.reply(v, user.Token)
-			case "我", "个人信息", "信息", "等级":
-				msg := fmt.Sprintf("权限：LV%v\n经验：%v\n监听列表：%v\n回传地址：%v密钥：%v", user.Level, user.XP, user.Watch, user.Url, user.Token)
+			case "我", "个人信息", "信息", "等级", "/info", "/level":
+				msg := fmt.Sprintf("权限：LV%v\\n经验：%v\\n监听列表：%v\\n回传地址：%v\\n密钥：%v", user.Level, user.XP, strings.Join(user.Watch, ","), user.Url, user.Token)
 				session.reply(v, msg)
+			case "关注", "监控", "/watch":
+				if len(args) > 1 {
+					watch := strings.Join(args[1:], ",")
+					user.Update("watch", watch)
+					session.reply(v, "监听列表更换为："+watch)
+				}
+			case "网址", "回传", "地址", "回传地址":
+				if len(args) > 1 {
+					user.Update("url", args[1])
+					session.reply(v, "回传地址更换为："+args[1])
+				}
+			case "帮助", "指令", "命令", "/help":
+				session.reply(v, "https://github.com/Drelf2018/weibo-webhook/blob/main/session.go#L114")
 			}
 		}
 	}

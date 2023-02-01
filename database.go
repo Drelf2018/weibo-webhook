@@ -159,19 +159,21 @@ func (user User) Update(key, value string) (sql.Result, error) {
 }
 
 // 根据 uid 返回 User 对象
-func GetUserByUID(uid int64) (user *User) {
+func GetUserByUID(uid int64, user *User) error {
 	ForEach(func(rows *sql.Rows) {
-		rows.Scan(&user)
+		var watch string
+		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &watch, &user.Url)
+		user.Watch = strings.Split(watch, ",")
 	}, "select * from users where uid=$1", uid)
-	if user.Uid != uid {
-		NewUser := &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
-		_, err := NewUser.Insert()
-		if printErr(err) {
-			return NewUser
+
+	if user == nil {
+		user = &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
+		_, err := user.Insert()
+		if !printErr(err) {
+			return fmt.Errorf("储存数据出错")
 		}
-		return nil
 	}
-	return
+	return nil
 }
 
 // 返回数据库中所有图片。
