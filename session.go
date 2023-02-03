@@ -10,17 +10,6 @@ import (
 	"time"
 )
 
-type Credential struct {
-	DedeUserID int64
-	sessdata   string
-	bili_jct   string
-	buvid3     string
-}
-
-func (c Credential) ToCookie() string {
-	return fmt.Sprintf("DedeUserID=%v; SESSDATA=%v; bili_jct=%v; buvid3=%v", c.DedeUserID, c.sessdata, c.bili_jct, c.buvid3)
-}
-
 type Session struct {
 	maxTs      int64
 	maxSeqno   map[int64]int64
@@ -58,13 +47,13 @@ type TextContent struct {
 }
 
 // 尝试解析文本消息
-func (event Event) GetContent() string {
+func (event Event) GetContent() (string, error) {
 	var realContent TextContent
 	err := json.Unmarshal([]byte(event.Content), &realContent)
 	if printErr(err) {
-		return realContent.Content
+		return realContent.Content, nil
 	}
-	return ""
+	return "", err
 }
 
 // 基础请求，自动添加请求头、Cookie
@@ -99,8 +88,14 @@ func (session Session) FetchSessionMsgs(talkerID, sessionType, beginSeqno int64)
 
 	for _, v := range Api.Data.Messages {
 		if v.SenderUID != session.credential.DedeUserID || !session.exceptSelf {
+			// 尝试解析文本
+			content, err := v.GetContent()
+			if err != nil {
+				continue
+			}
+			log.Infof("接收到 %v 消息：%v", v.SenderUID, content)
 			// 分解指令
-			args := strings.Split(v.GetContent(), " ")
+			args := strings.Split(content, " ")
 			if len(args) < 1 {
 				continue
 			}
@@ -113,23 +108,27 @@ func (session Session) FetchSessionMsgs(talkerID, sessionType, beginSeqno int64)
 			// 执行指令
 			switch args[0] {
 			case "注册", "register", "token", "/register", "/token":
-				session.reply(v, user.Token)
+				session.reply(v, "密钥："+user.Token)
 			case "我", "个人信息", "信息", "等级", "/info", "/level":
 				msg := fmt.Sprintf("权限：LV%v\\n经验：%v\\n监听列表：%v\\n回传地址：%v\\n密钥：%v", user.Level, user.XP, strings.Join(user.Watch, ","), user.Url, user.Token)
 				session.reply(v, msg)
 			case "关注", "监控", "/watch":
 				if len(args) > 1 {
-					watch := strings.Join(args[1:], ",")
-					user.Update("watch", watch)
-					session.reply(v, "监听列表更换为："+watch)
+					watch := strings.Join(Filter(args[1:], func(s string) bool {
+						return s != ""
+					}), ",")
+					_, err := user.Update("watch", watch)
+					if printErr(err) {
+						session.reply(v, "监听列表更换为："+watch)
+					}
 				}
-			case "网址", "回传", "地址", "回传地址":
+			case "网址", "回传", "地址", "回传地址", "/url":
 				if len(args) > 1 {
 					user.Update("url", args[1])
 					session.reply(v, "回传地址更换为："+args[1])
 				}
 			case "帮助", "指令", "命令", "/help":
-				session.reply(v, "https://github.com/Drelf2018/weibo-webhook/blob/main/session.go#L114")
+				session.reply(v, "可用指令：\\n/help 获取帮助\\n/token 获取密钥\\n/info 获取个人信息\\n/url [path string] 修改回传地址\\n/watch [id ...string] 修改关注列表")
 			}
 		}
 	}
@@ -144,6 +143,7 @@ func (session Session) NewSessions(beginTs int64) []SessionList {
 	err := json.Unmarshal(session.Request("GET", Url+Params, ""), &Api)
 	panicErr(err)
 
+	log.Infof("未读会话数：%v", len(Api.Data.SessionList))
 	return Api.Data.SessionList
 }
 
@@ -156,6 +156,7 @@ func (session Session) GetSessions(sessionType int64) []SessionList {
 	err := json.Unmarshal(session.Request("GET", Url+Params, ""), &Api)
 	panicErr(err)
 
+	log.Infof("已读会话数：%v", len(Api.Data.SessionList))
 	return Api.Data.SessionList
 }
 
@@ -166,6 +167,7 @@ func (session Session) SendMsg(ReceiverID int64, content string) {
 	Data := fmt.Sprintf(Format, session.credential.DedeUserID, ReceiverID, content, time.Now().Unix(), session.credential.bili_jct, session.credential.bili_jct)
 
 	session.Request("POST", Url, Data)
+	log.Infof("发送到 %v 消息：%v", ReceiverID, content)
 }
 
 // 快速回复消息
@@ -178,6 +180,7 @@ func (session Session) reply(event Event, content string) {
 // 间隔轮询
 func (session Session) run(Interval int64) {
 	// 初始化 只接收开始运行后的新消息
+	log.Info("会话初始化")
 	for _, v := range session.GetSessions(4) {
 		session.maxSeqno[v.TalkerID] = v.MaxSeqno
 	}

@@ -155,7 +155,7 @@ func (user User) Insert() (sql.Result, error) {
 
 // 更新用户数据
 func (user User) Update(key, value string) (sql.Result, error) {
-	return db.Exec("UPDATE users SET $1=$2 WHERE uid=$3", key, value, user.Uid)
+	return db.Exec(fmt.Sprintf("UPDATE users SET %v='%v' WHERE uid=%v", key, value, user.Uid))
 }
 
 // 根据 uid 返回 User 对象
@@ -166,7 +166,7 @@ func GetUserByUID(uid int64, user *User) error {
 		user.Watch = strings.Split(watch, ",")
 	}, "select * from users where uid=$1", uid)
 
-	if user == nil {
+	if user.Uid != uid {
 		user = &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
 		_, err := user.Insert()
 		if !printErr(err) {

@@ -36,11 +36,13 @@ func update(c *gin.Context) {
 		err := c.Bind(&post)
 		if err == nil {
 			code, msg := post.Save(token)
+			log.Infof("用户 token: %v %v", token, msg)
 			c.JSON(200, gin.H{
 				"code": code,
 				"data": msg,
 			})
 		} else {
+			log.Infof("用户 token: %v 提交错误：%v", token, err.Error())
 			c.JSON(400, gin.H{
 				"code":  3,
 				"error": err.Error(),
@@ -55,14 +57,27 @@ var cfg Config
 func init() {
 	// 从命令行读取数据库连接参数
 	cfg.Pasre()
+	flag := false
+	if cfg.Credential.DedeUserID == -1 {
+		flag = true
+		log.Error("uid 读取失败")
+	}
+	if cfg.Credential.sessdata == "" {
+		flag = true
+		log.Error("sessdata 读取失败")
+	}
+	if cfg.Credential.bili_jct == "" {
+		flag = true
+		log.Error("bili_jct 读取失败")
+	}
+	if flag {
+		panic("检查参数")
+	}
 }
 
 func main() {
 	// 启动b站私信监听
-	credential := Credential{
-		188888131,
-	}
-	go Session{0, make(map[int64]int64), true, credential}.run(5)
+	go Session{1000 * time.Now().UnixMilli(), make(map[int64]int64), true, cfg.Credential}.run(7)
 
 	// 运行 gin 服务器
 	if !cfg.Debug {
@@ -73,5 +88,5 @@ func main() {
 	r.GET("weibo", weibo)
 	r.POST("update", update)
 
-	r.Run() // listen and serve on 0.0.0.0:8080
+	r.Run(":5664") // listen and serve on 0.0.0.0:5664
 }

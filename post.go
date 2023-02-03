@@ -39,7 +39,7 @@ func (post *Post) Save(token string) (int64, string) {
 	if level <= 0 {
 		return 1, "token 错误"
 	}
-
+	log.Infof("收到 token: %v(LV%v) 博文：%v", token, level, post.Text)
 	// 初始化检查器
 	monitor, ok := Monitors[post.Type+post.Mid]
 	// 将修改后的值存回字典

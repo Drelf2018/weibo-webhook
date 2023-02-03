@@ -3,7 +3,22 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"time"
+
+	nested "github.com/antonfisher/nested-logrus-formatter"
+	"github.com/sirupsen/logrus"
 )
+
+var log = &logrus.Logger{
+	Out: os.Stderr,
+	Formatter: &nested.Formatter{
+		HideKeys:        true,
+		TimestampFormat: time.Kitchen,
+	},
+	Hooks: make(logrus.LevelHooks),
+	Level: logrus.DebugLevel,
+}
 
 // 一条博文包含的信息
 type Post struct {
@@ -50,12 +65,24 @@ func AnyTo[T any](Expr bool, Pointer *T, Value T) {
 	}
 }
 
+type Credential struct {
+	DedeUserID int64
+	sessdata   string
+	bili_jct   string
+	// buvid3     string
+}
+
+func (c Credential) ToCookie() string {
+	return fmt.Sprintf("DedeUserID=%v; SESSDATA=%v; bili_jct=%v;", c.DedeUserID, c.sessdata, c.bili_jct)
+}
+
 type Config struct {
 	User       string
 	Password   string
 	DBname     string
 	DriverName string
 	Debug      bool
+	Credential Credential
 }
 
 // 获取命令行参数
@@ -64,6 +91,9 @@ func (cfg *Config) Pasre() {
 	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
 	flag.StringVar(&cfg.DBname, "dbname", "", "库名")
 	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
+	flag.Int64Var(&cfg.Credential.DedeUserID, "uid", -1, "UID")
+	flag.StringVar(&cfg.Credential.sessdata, "sessdata", "", "sessdata")
+	flag.StringVar(&cfg.Credential.bili_jct, "bili_jct", "", "bili_jct")
 	flag.Parse()
 	cfg.DriverName = Any(cfg.DBname == "", "sqlite3", "postgres")
 }
