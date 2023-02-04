@@ -1,5 +1,25 @@
 package main
 
+// 一条博文包含的信息
+type Post struct {
+	Mid    string  `form:"mid" json:"mid"`
+	Time   float64 `form:"time" json:"time"`
+	Text   string  `form:"text" json:"text"`
+	Type   string  `form:"type" json:"type"`
+	Source string  `form:"source" json:"source"`
+
+	Uid      string `form:"uid" json:"uid"`
+	Name     string `form:"name" json:"name"`
+	Face     string `form:"face" json:"face"`
+	Follow   string `form:"follow" json:"follow"`
+	Follower string `form:"follower" json:"follower"`
+	Desc     string `form:"description" json:"description"`
+
+	PicUrls []string `form:"picUrls" json:"picUrls"`
+	Repost  *Post    `form:"repost,omitempty" json:"repost"`
+}
+
+// 博文检查器
 type PostMonitor struct {
 	Score    float64
 	Posts    []Post

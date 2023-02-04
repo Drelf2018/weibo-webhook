@@ -14,7 +14,16 @@ import (
 )
 
 var db *sql.DB
-var insertPic, insertPost, insertUser *sql.Stmt
+var PictureStmt, PostStmt *sql.Stmt
+
+type User struct {
+	Uid   int64 `form:"uid" json:"uid"`
+	Token string
+	Level int64
+	XP    int64
+	Watch []string `form:"watch" json:"watch"`
+	Url   string   `form:"url" json:"url"`
+}
 
 // 打开数据库并验证
 //
@@ -78,15 +87,13 @@ func init() {
 	panicErr(err)
 
 	// 初始化插入语句
-	insertPic, err = db.Prepare("INSERT INTO pictures(url,local) VALUES($1,$2) Returning id")
+	PictureStmt, err = db.Prepare("INSERT INTO pictures(url,local) VALUES($1,$2) Returning id")
 	panicErr(err)
-	insertPost, err = db.Prepare(`
+	PostStmt, err = db.Prepare(`
 		INSERT INTO posts(mid,time,text,type,source,picUrls,repost,uid,name,face,follow,follower,description)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		Returning id
 	`)
-	panicErr(err)
-	insertUser, err = db.Prepare("INSERT INTO users(uid,token,level,xp,watch,url) VALUES($1,$2,$3,$4,$5,$6)")
 	panicErr(err)
 }
 
@@ -97,7 +104,7 @@ func (post *Post) Insert() (postID int64) {
 	if post == nil {
 		return 0
 	}
-	if insertPost.QueryRow(
+	if PostStmt.QueryRow(
 		post.Mid,
 		post.Time,
 		post.Text,
@@ -119,23 +126,24 @@ func (post *Post) Insert() (postID int64) {
 }
 
 // 向数据库插入一张图片
-func InsertPic(url string) (line string) {
+func InsertPicture(url string) (line string) {
 	// 判断是否已经保存过
 	ForEach(func(rows *sql.Rows) {
 		rows.Scan(&line)
 	}, "select id from pictures where url=$1", url)
 	// 未保存且保存成功后返回行号
-	if line == "" && insertPic.QueryRow(url, "Images").Scan(&line) != nil {
-		return ""
-	} else {
-		// 异步下载
-		go Download(url, line)
-		return
+	if line == "" {
+		err := PictureStmt.QueryRow(url, "Images").Scan(&line)
+		if printErr(err) {
+			go Download(url, line)
+			return
+		}
 	}
+	return ""
 }
 
 // 更新图片
-func UpdatePic(local, line string) (sql.Result, error) {
+func UpdatePicture(local, line string) (sql.Result, error) {
 	return db.Exec("UPDATE pictures SET local=$1 WHERE id=$2;", local, line)
 }
 
@@ -143,14 +151,16 @@ func UpdatePic(local, line string) (sql.Result, error) {
 func SavePictures(urls []string) string {
 	var pids []string
 	for _, url := range urls {
-		pids = append(pids, InsertPic(url))
+		pids = append(pids, InsertPicture(url))
 	}
 	return strings.Join(pids, ",")
 }
 
 // 向数据库插入一位用户。
 func (user User) Insert() (sql.Result, error) {
-	return insertUser.Exec(user.Uid, user.Token, user.Level, user.XP, strings.Join(user.Watch, ","), user.Url)
+	stmt, err := db.Prepare("INSERT INTO users(uid,token,level,xp,watch,url) VALUES($1,$2,$3,$4,$5,$6)")
+	panicErr(err)
+	return stmt.Exec(user.Uid, user.Token, user.Level, user.XP, strings.Join(user.Watch, ","), user.Url)
 }
 
 // 更新用户数据

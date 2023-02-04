@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// 全局 log
 var log = &logrus.Logger{
 	Out: os.Stderr,
 	Formatter: &nested.Formatter{
@@ -18,25 +18,6 @@ var log = &logrus.Logger{
 	},
 	Hooks: make(logrus.LevelHooks),
 	Level: logrus.DebugLevel,
-}
-
-// 一条博文包含的信息
-type Post struct {
-	Mid    string  `form:"mid" json:"mid"`
-	Time   float64 `form:"time" json:"time"`
-	Text   string  `form:"text" json:"text"`
-	Type   string  `form:"type" json:"type"`
-	Source string  `form:"source" json:"source"`
-
-	Uid      string `form:"uid" json:"uid"`
-	Name     string `form:"name" json:"name"`
-	Face     string `form:"face" json:"face"`
-	Follow   string `form:"follow" json:"follow"`
-	Follower string `form:"follower" json:"follower"`
-	Desc     string `form:"description" json:"description"`
-
-	PicUrls []string `form:"picUrls" json:"picUrls"`
-	Repost  *Post    `form:"repost,omitempty" json:"repost"`
 }
 
 // 过滤函数
@@ -65,58 +46,6 @@ func AnyTo[T any](Expr bool, Pointer *T, Value T) {
 	}
 }
 
-type Credential struct {
-	DedeUserID int64
-	sessdata   string
-	bili_jct   string
-	// buvid3     string
-}
-
-func (c Credential) ToCookie() string {
-	return fmt.Sprintf("DedeUserID=%v; SESSDATA=%v; bili_jct=%v;", c.DedeUserID, c.sessdata, c.bili_jct)
-}
-
-type Config struct {
-	User       string
-	Password   string
-	DBname     string
-	DriverName string
-	Debug      bool
-	Credential Credential
-}
-
-// 获取命令行参数
-func (cfg *Config) Pasre() {
-	flag.StringVar(&cfg.User, "user", "postgres", "用户名")
-	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
-	flag.StringVar(&cfg.DBname, "dbname", "", "库名")
-	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
-	flag.Int64Var(&cfg.Credential.DedeUserID, "uid", -1, "UID")
-	flag.StringVar(&cfg.Credential.sessdata, "sessdata", "", "sessdata")
-	flag.StringVar(&cfg.Credential.bili_jct, "bili_jct", "", "bili_jct")
-	flag.Parse()
-	cfg.DriverName = Any(cfg.DBname == "", "sqlite3", "postgres")
-}
-
-// 是否为 SQLite 数据库参数
-func (cfg Config) isSQLite() bool {
-	return cfg.DriverName == "sqlite3"
-}
-
-// Postgres 数据库所需参数
-func (cfg Config) Key() string {
-	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.User, cfg.Password, cfg.DBname)
-}
-
-type User struct {
-	Uid   int64 `form:"uid" json:"uid"`
-	Token string
-	Level int64
-	XP    int64
-	Watch []string `form:"watch" json:"watch"`
-	Url   string   `form:"url" json:"url"`
-}
-
 func panicErr(err error) bool {
 	if err != nil {
 		panic(err)
@@ -125,6 +54,7 @@ func panicErr(err error) bool {
 	}
 }
 
+// 如果出错则打印错误并返回 false 否则返回 true
 func printErr(err error) bool {
 	if err != nil {
 		fmt.Printf("err: %v\n", err)

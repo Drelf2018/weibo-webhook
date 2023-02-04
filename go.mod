@@ -35,3 +35,5 @@ require (
 	github.com/antonfisher/nested-logrus-formatter v1.3.1 // direct
 	github.com/sirupsen/logrus v1.9.0 // direct
 )
+
+require github.com/gin-contrib/cors v1.4.0 // indirect
