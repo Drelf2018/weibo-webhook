@@ -17,12 +17,12 @@ var db *sql.DB
 var PictureStmt, PostStmt *sql.Stmt
 
 type User struct {
-	Uid   int64 `form:"uid" json:"uid"`
-	Token string
-	Level int64
-	XP    int64
-	Watch []string `form:"watch" json:"watch"`
-	Url   string   `form:"url" json:"url"`
+	Uid   int64    `json:"uid"`
+	Token string   `json:"token,omit($any)"`
+	Level int64    `json:"level"`
+	XP    int64    `json:"xp"`
+	Watch []string `json:"watch"`
+	Url   string   `json:"url"`
 }
 
 // 打开数据库并验证
@@ -101,7 +101,7 @@ func init() {
 //
 // 我超好巧妙的递归储存
 func (post *Post) Insert() (postID int64) {
-	if post == nil {
+	if post == nil || post.Mid == "" {
 		return 0
 	}
 	if PostStmt.QueryRow(
@@ -164,26 +164,30 @@ func (user User) Insert() (sql.Result, error) {
 }
 
 // 更新用户数据
-func (user User) Update(key, value string) (sql.Result, error) {
-	return db.Exec(fmt.Sprintf("UPDATE users SET %v='%v' WHERE uid=%v", key, value, user.Uid))
+func (user User) Update(key, value any) (sql.Result, error) {
+	switch value := value.(type) {
+	case string:
+		return db.Exec(fmt.Sprintf("UPDATE users SET %v='%v' WHERE uid=%v", key, value, user.Uid))
+	default:
+		return db.Exec(fmt.Sprintf("UPDATE users SET %v=%v WHERE uid=%v", key, value, user.Uid))
+	}
 }
 
-// 根据 uid 返回 User 对象
-func GetUserByUID(uid int64, user *User) error {
+// 新建用户
+func NewUserByUID(uid int64) (user *User, err error) {
+	user = &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
+	_, err = user.Insert()
+	return
+}
+
+// 根据 Key 返回 User 对象
+func GetUserByKey(key string, val any) (user User) {
 	ForEach(func(rows *sql.Rows) {
 		var watch string
 		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &watch, &user.Url)
 		user.Watch = strings.Split(watch, ",")
-	}, "select * from users where uid=$1", uid)
-
-	if user.Uid != uid {
-		user = &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
-		_, err := user.Insert()
-		if !printErr(err) {
-			return fmt.Errorf("储存数据出错")
-		}
-	}
-	return nil
+	}, "select * from users where "+key+"=$1", val)
+	return user
 }
 
 // 返回数据库中所有图片。
@@ -242,16 +246,6 @@ func GetAllPost() (PostList []Post) {
 			PostList = append(PostList, post)
 		}
 	}, "select * from posts order by id")
-	return
-}
-
-// 根据 token 返回级别。
-func GetLevelByToken(token string) (level float64) {
-	ForEach(func(rows *sql.Rows) {
-		if !printErr(rows.Scan(&level)) {
-			level = 0
-		}
-	}, "select level from users where token=$1", token)
 	return
 }
 

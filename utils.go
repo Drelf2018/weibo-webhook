@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -20,7 +19,7 @@ var log = &logrus.Logger{
 	Level: logrus.DebugLevel,
 }
 
-// 过滤函数
+// 过滤函数 时间复杂度暂且不说
 func Filter[T any](s []T, fn func(T) bool) []T {
 	result := make([]T, 0, len(s))
 	for _, v := range s {
@@ -57,7 +56,7 @@ func panicErr(err error) bool {
 // 如果出错则打印错误并返回 false 否则返回 true
 func printErr(err error) bool {
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
+		log.Error(err)
 		return false
 	} else {
 		return true

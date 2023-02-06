@@ -39,23 +39,31 @@ func Download(url, line string) {
 
 	_, err = UpdatePicture(local, line)
 	panicErr(err)
+
+	log.Infof("图片 %v 下载完成", url)
 }
 
 // 将 Post 信息 Post 给用户 什么双关
-func Webhook(post Post) {
+func Webhook(post *Post) {
 	dataByte, err := json.Marshal(post)
 	if printErr(err) {
 		bodyReader := bytes.NewReader(dataByte)
 		for _, url := range GetUrlsByWatch(post.Type + post.Uid) {
-			http.Post(url, "application/json;charset=utf-8", bodyReader)
+			resp, err := http.Post(url, "application/json;charset=utf-8", bodyReader)
+			if printErr(err) {
+				body, err := ioutil.ReadAll(resp.Body)
+				if printErr(err) {
+					log.Infof("成功向用户 %v 发送请求 %v", url, string(body))
+				}
+			}
+			defer resp.Body.Close()
 		}
 	}
 }
 
 type ApiData struct {
-	Code  int64     `json:"code"`
-	Error string    `json:"error"`
-	Data  []Replies `json:"data"`
+	Code int64     `json:"code"`
+	Data []Replies `json:"data"`
 }
 
 type Replies struct {

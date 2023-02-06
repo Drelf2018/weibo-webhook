@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/liu-cn/json-filter/filter"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -14,8 +15,8 @@ func GetUID(c *gin.Context) (string, bool) {
 	UID, ok := c.GetQuery("uid")
 	if !ok {
 		c.JSON(400, gin.H{
-			"code":  1,
-			"error": "UID 获取失败",
+			"code": 1,
+			"data": "UID 获取失败",
 		})
 		return "", false
 	}
@@ -26,8 +27,8 @@ func GetToken(c *gin.Context, token string) (string, bool) {
 	Token, ok := c.GetQuery("token")
 	if !ok || (token != "" && Token != token) {
 		c.JSON(400, gin.H{
-			"code":  1,
-			"error": "Token 获取失败",
+			"code": 1,
+			"data": "Token 获取失败",
 		})
 		return "", false
 	}
@@ -43,8 +44,8 @@ func GetPost(c *gin.Context) {
 		TimeNow, err = strconv.ParseFloat(beginTs, 64)
 		if err != nil {
 			c.JSON(400, gin.H{
-				"code":  1,
-				"error": err.Error(),
+				"code": 1,
+				"data": err.Error(),
 			})
 			return
 		}
@@ -58,20 +59,30 @@ func GetPost(c *gin.Context) {
 // 提交博文
 func UpdatePost(c *gin.Context) {
 	if token, ok := GetToken(c, ""); ok {
+		user := GetUserByKey("token", token)
+		if user.Token != token {
+			c.JSON(400, gin.H{
+				"code": 2,
+				"data": "Token 验证失败",
+			})
+			return
+		}
 		var post Post
 		err := c.Bind(&post)
 		if err == nil {
-			code, msg := post.Save(token)
-			log.Infof("用户 token: %v %v", token, msg)
+			post.Empty()
+			log.Infof("用户 %v 提交 %v 级博文: %v", user.Uid, user.Level, post.Text)
+			code, msg := post.Save(&user)
+			log.Infof("用户 %v %v", user.Uid, msg)
 			c.JSON(200, gin.H{
 				"code": code,
 				"data": msg,
 			})
 		} else {
-			log.Infof("用户 token: %v 提交错误：%v", token, err.Error())
+			log.Errorf("用户 %v 提交失败: %v", user.Uid, err.Error())
 			c.JSON(400, gin.H{
-				"code":  3,
-				"error": err.Error(),
+				"code": 3,
+				"data": err.Error(),
 			})
 		}
 	}
@@ -99,8 +110,8 @@ func Register(c *gin.Context) {
 
 	if !TokenCorrect {
 		c.JSON(400, gin.H{
-			"code":  2,
-			"error": "Token 验证失败",
+			"code": 2,
+			"data": "Token 验证失败",
 		})
 		return
 	}
@@ -108,18 +119,17 @@ func Register(c *gin.Context) {
 	NumberUID, err := strconv.ParseInt(UID, 10, 64)
 	if err != nil {
 		c.JSON(400, gin.H{
-			"code":  3,
-			"error": err.Error(),
+			"code": 3,
+			"data": err.Error(),
 		})
 		return
 	}
 
-	var user User
-	err = GetUserByUID(NumberUID, &user)
+	user, err := NewUserByUID(NumberUID)
 	if err != nil {
 		c.JSON(400, gin.H{
-			"code":  4,
-			"error": err.Error(),
+			"code": 4,
+			"data": err.Error(),
 		})
 		return
 	}
@@ -152,33 +162,32 @@ func Login(c *gin.Context) {
 			uid, err := strconv.ParseInt(UID, 10, 64)
 			if !printErr(err) {
 				c.JSON(400, gin.H{
-					"code":  2,
-					"error": err.Error(),
+					"code": 2,
+					"data": err.Error(),
 				})
 				return
 			}
 
-			var user User
-			err = GetUserByUID(uid, &user)
-			if !printErr(err) {
+			user := GetUserByKey("uid", uid)
+			if user.Uid == 0 {
 				c.JSON(400, gin.H{
-					"code":  3,
-					"error": err.Error(),
+					"code": 3,
+					"data": "账号不存在",
 				})
 				return
 			}
 
 			if user.Token != Token {
 				c.JSON(200, gin.H{
-					"code":  4,
-					"error": "Token 不正确",
+					"code": 4,
+					"data": "Token 不正确",
 				})
 				return
 			}
 
 			c.JSON(200, gin.H{
 				"code": 0,
-				"data": user,
+				"data": filter.OmitMarshal("login", user).Interface(),
 			})
 		}
 	}
@@ -190,7 +199,6 @@ func Cors() gin.HandlerFunc {
 		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
 		AllowHeaders:    []string{"Content-Type", "Access-Token", "Authorization"},
 	}
-
 	return cors.New(c)
 }
 
