@@ -17,12 +17,12 @@ var db *sql.DB
 var PictureStmt, PostStmt *sql.Stmt
 
 type User struct {
-	Uid   int64    `json:"uid"`
+	Uid   int64    `form:"uid" json:"uid"`
 	Token string   `json:"token,omit($any)"`
-	Level int64    `json:"level"`
-	XP    int64    `json:"xp"`
-	Watch []string `json:"watch"`
-	Url   string   `json:"url"`
+	Level int64    `form:"level" json:"level"`
+	XP    int64    `form:"xp" json:"xp"`
+	Watch []string `form:"watch" json:"watch"`
+	Url   string   `form:"url" json:"url"`
 }
 
 // 打开数据库并验证
@@ -65,14 +65,19 @@ func init() {
 		text     text,
 		type	 text,
 		source   text,
-		picUrls  text,
-		repost   text,
+
 		uid      text,
 		name     text,
 		face     text,
-		follow   text,
-		follower text,
-		description text
+		pendant  text,
+		description text,
+
+		follower  text,
+		following text,
+
+		attachment text,
+		picUrls    text,
+		repost     text
 	)`, AutoIncrement))
 	panicErr(err)
 	_, err = db.Exec(fmt.Sprintf(`
@@ -90,8 +95,8 @@ func init() {
 	PictureStmt, err = db.Prepare("INSERT INTO pictures(url,local) VALUES($1,$2) Returning id")
 	panicErr(err)
 	PostStmt, err = db.Prepare(`
-		INSERT INTO posts(mid,time,text,type,source,picUrls,repost,uid,name,face,follow,follower,description)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		INSERT INTO posts(mid,time,text,type,source,uid,name,face,pendant,description,follower,following,attachment,picUrls,repost)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		Returning id
 	`)
 	panicErr(err)
@@ -104,21 +109,24 @@ func (post *Post) Insert() (postID int64) {
 	if post == nil || post.Mid == "" {
 		return 0
 	}
-	if PostStmt.QueryRow(
+	err := PostStmt.QueryRow(
 		post.Mid,
 		post.Time,
 		post.Text,
 		post.Type,
 		post.Source,
-		SavePictures(post.PicUrls),
-		post.Repost.Insert(),
 		post.Uid,
 		post.Name,
 		SavePictures([]string{post.Face}),
-		post.Follow,
+		SavePictures([]string{post.Pendant}),
+		post.Description,
 		post.Follower,
-		post.Desc,
-	).Scan(&postID) != nil {
+		post.Following,
+		strings.Join(post.Attachment, ","),
+		SavePictures(post.PicUrls),
+		post.Repost.Insert(),
+	).Scan(&postID)
+	if !printErr(err) {
 		return 0
 	}
 	PostList = append(PostList, *post)
@@ -128,16 +136,17 @@ func (post *Post) Insert() (postID int64) {
 // 向数据库插入一张图片
 func InsertPicture(url string) (line string) {
 	// 判断是否已经保存过
-	ForEach(func(rows *sql.Rows) {
-		rows.Scan(&line)
-	}, "select id from pictures where url=$1", url)
-	// 未保存且保存成功后返回行号
-	if line == "" {
-		err := PictureStmt.QueryRow(url, "Images").Scan(&line)
-		if printErr(err) {
-			go Download(url, line)
-			return
+	for i, v := range Pictures {
+		if v == url {
+			return strconv.Itoa(i + 1)
 		}
+	}
+	// 未保存且保存成功后返回行号
+	err := PictureStmt.QueryRow(url, url).Scan(&line)
+	if printErr(err) {
+		Pictures = append(Pictures, url)
+		go Download(url, line)
+		return
 	}
 	return ""
 }
@@ -151,6 +160,9 @@ func UpdatePicture(local, line string) (sql.Result, error) {
 func SavePictures(urls []string) string {
 	var pids []string
 	for _, url := range urls {
+		if url == "" {
+			continue
+		}
 		pids = append(pids, InsertPicture(url))
 	}
 	return strings.Join(pids, ",")
@@ -190,6 +202,20 @@ func GetUserByKey(key string, val any) (user User) {
 	return user
 }
 
+// 返回所有 User 对象
+func GetAllUsers() (users []User) {
+	ForEach(func(rows *sql.Rows) {
+		var user User
+		var watch string
+		err := rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &watch, &user.Url)
+		if panicErr(err) {
+			user.Watch = strings.Split(watch, ",")
+			users = append(users, user)
+		}
+	}, "select * from users")
+	return
+}
+
 // 返回数据库中所有图片。
 func GetAllPictures() (Pictures []string) {
 	ForEach(func(rows *sql.Rows) {
@@ -204,10 +230,10 @@ func GetAllPictures() (Pictures []string) {
 
 // 返回数据库中所有博文。
 func GetAllPost() (PostList []Post) {
-	Pictures := GetAllPictures()
 	ForEach(func(rows *sql.Rows) {
 		var post Post
 		var postID int64
+		var Attachment string
 		var PicUrls string
 		var repostID int64
 		err := rows.Scan(
@@ -217,16 +243,23 @@ func GetAllPost() (PostList []Post) {
 			&post.Text,
 			&post.Type,
 			&post.Source,
-			&PicUrls,
-			&repostID,
+
 			&post.Uid,
 			&post.Name,
 			&post.Face,
-			&post.Follow,
+			&post.Pendant,
+			&post.Description,
+
 			&post.Follower,
-			&post.Desc,
+			&post.Following,
+
+			&Attachment,
+			&PicUrls,
+			&repostID,
 		)
 		if printErr(err) {
+			// 分割附件
+			post.Attachment = strings.Split(Attachment, ",")
 			// 将配图由序号转为链接
 			for _, pid := range strings.Split(PicUrls, ",") {
 				PicID, err := strconv.ParseInt(pid, 10, 64)
@@ -234,10 +267,14 @@ func GetAllPost() (PostList []Post) {
 					post.PicUrls = append(post.PicUrls, Pictures[PicID-1])
 				}
 			}
-			// 头像 同理
+			// 头像、装扮 同理
 			FaceID, err := strconv.ParseInt(post.Face, 10, 64)
 			if printErr(err) {
 				post.Face = Pictures[FaceID-1]
+			}
+			PendantID, err := strconv.ParseInt(post.Pendant, 10, 64)
+			if printErr(err) {
+				post.Pendant = Pictures[PendantID-1]
 			}
 			// 添加转发的微博
 			if repostID != 0 {

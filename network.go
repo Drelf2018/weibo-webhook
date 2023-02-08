@@ -26,7 +26,7 @@ func Download(url, line string) {
 	panicErr(err)
 	defer resp.Body.Close()
 
-	dir := "./image/"
+	dir := "image/"
 	local := dir + strings.Split(path.Base(url), "?")[0]
 	MakeDir(dir)
 
@@ -49,6 +49,9 @@ func Webhook(post *Post) {
 	if printErr(err) {
 		bodyReader := bytes.NewReader(dataByte)
 		for _, url := range GetUrlsByWatch(post.Type + post.Uid) {
+			if url == "" {
+				continue
+			}
 			resp, err := http.Post(url, "application/json;charset=utf-8", bodyReader)
 			if printErr(err) {
 				body, err := ioutil.ReadAll(resp.Body)

@@ -3,6 +3,7 @@ package main
 import (
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -125,7 +126,16 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	user, err := NewUserByUID(NumberUID)
+	user := GetUserByKey("uid", NumberUID)
+	if user.Uid != 0 {
+		c.JSON(200, gin.H{
+			"code": 0,
+			"data": user.Token,
+		})
+		return
+	}
+
+	newUser, err := NewUserByUID(NumberUID)
 	if err != nil {
 		c.JSON(400, gin.H{
 			"code": 4,
@@ -136,7 +146,7 @@ func Register(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"code": 0,
-		"data": user.Token,
+		"data": newUser.Token,
 	})
 }
 
@@ -155,39 +165,93 @@ func GetRandomToken(c *gin.Context) {
 	}
 }
 
-// 登录
-func Login(c *gin.Context) {
+// 登录前置
+func BeforeLogin(c *gin.Context) (*User, int) {
 	if UID, ok := GetUID(c); ok {
 		if Token, ok := GetToken(c, ""); ok {
 			uid, err := strconv.ParseInt(UID, 10, 64)
 			if !printErr(err) {
-				c.JSON(400, gin.H{
-					"code": 2,
-					"data": err.Error(),
-				})
-				return
+				return nil, 2
 			}
 
 			user := GetUserByKey("uid", uid)
 			if user.Uid == 0 {
-				c.JSON(400, gin.H{
-					"code": 3,
-					"data": "账号不存在",
-				})
-				return
+				return nil, 3
 			}
 
 			if user.Token != Token {
-				c.JSON(200, gin.H{
-					"code": 4,
-					"data": "Token 不正确",
-				})
-				return
+				return nil, 4
 			}
 
+			return &user, 0
+		}
+	}
+	return nil, 1
+}
+
+func Login(c *gin.Context) {
+	user, err := BeforeLogin(c)
+	switch err {
+	case 0:
+		if user.Uid == 188888131 {
 			c.JSON(200, gin.H{
 				"code": 0,
-				"data": filter.OmitMarshal("login", user).Interface(),
+				"data": filter.OmitMarshal("login", GetAllUsers()).Interface(),
+			})
+		} else {
+			c.JSON(200, gin.H{
+				"code": 0,
+				"data": filter.OmitMarshal("login", []User{*user}).Interface(),
+			})
+		}
+
+	case 2:
+		c.JSON(400, gin.H{
+			"code": 2,
+			"data": "UID 输入错误",
+		})
+	case 3:
+		c.JSON(400, gin.H{
+			"code": 3,
+			"data": "账号不存在",
+		})
+	case 4:
+		c.JSON(200, gin.H{
+			"code": 4,
+			"data": "Token 不正确",
+		})
+	}
+}
+
+func Modify(c *gin.Context) {
+	user, err := BeforeLogin(c)
+	switch err {
+	case 0:
+		var other User
+		err := c.Bind(&other)
+		if err != nil {
+			c.JSON(200, gin.H{
+				"code": 2,
+				"data": "获取修改数据失败",
+			})
+			return
+		}
+		if other.Uid == user.Uid || user.Uid == 188888131 {
+			// 普通用户只允许修改这两项
+			other.Update("url", other.Url)
+			other.Update("watch", strings.Join(other.Watch, ","))
+			if user.Uid == 188888131 {
+				other.Update("level", other.Level)
+				other.Update("xp", other.XP)
+			}
+			c.JSON(200, gin.H{
+				"code": 0,
+				"data": filter.OmitMarshal("login", GetUserByKey("uid", other.Uid)).Interface(),
+			})
+		} else {
+			c.JSON(200, gin.H{
+				"code": 3,
+				"data": "不能修改别人信息哦",
 			})
 		}
 	}
@@ -225,11 +289,14 @@ func main() {
 	// 跨域设置
 	r.Use(Cors())
 
+	r.Static("image", "image")
+
 	r.GET("login", Login)
 	r.GET("post", GetPost)
 	r.GET("register", Register)
 	r.GET("token", GetRandomToken)
 
+	r.POST("modify", Modify)
 	r.POST("update", UpdatePost)
 
 	r.Run(":5664") // listen and serve on 0.0.0.0:5664

@@ -6,21 +6,28 @@ import (
 
 // 一条博文包含的信息
 type Post struct {
-	Mid    string  `form:"mid" json:"mid"`
-	Time   float64 `form:"time" json:"time"`
-	Text   string  `form:"text" json:"text"`
-	Type   string  `form:"type" json:"type"`
-	Source string  `form:"source" json:"source"`
+	// 博文相关
+	Mid    string `form:"mid" json:"mid"`
+	Time   int64  `form:"time" json:"time"`
+	Text   string `form:"text" json:"text"`
+	Type   string `form:"type" json:"type"`
+	Source string `form:"source" json:"source"`
 
-	Uid      string `form:"uid" json:"uid"`
-	Name     string `form:"name" json:"name"`
-	Face     string `form:"face" json:"face"`
-	Follow   string `form:"follow" json:"follow"`
-	Follower string `form:"follower" json:"follower"`
-	Desc     string `form:"description" json:"description"`
+	// 博主相关
+	Uid         string `form:"uid" json:"uid"`
+	Name        string `form:"name" json:"name"`
+	Face        string `form:"face" json:"face"`
+	Pendant     string `form:"pendant" json:"pendant"`
+	Description string `form:"description" json:"description"`
 
-	PicUrls []string `form:"picUrls" json:"picUrls"`
-	Repost  *Post    `form:"repost" json:"repost"`
+	// 粉丝关注
+	Follower  string `form:"follower" json:"follower"`
+	Following string `form:"following" json:"following"`
+
+	// 附件
+	Attachment []string `form:"attachment" json:"attachment"`
+	PicUrls    []string `form:"picUrls" json:"picUrls"`
+	Repost     *Post    `form:"repost" json:"repost"`
 }
 
 // 博文检查器
@@ -55,10 +62,12 @@ func In(user *User, pm *PostMonitor) bool {
 }
 
 var PostList []Post
+var Pictures []string
 var isPosted = make(map[string]bool)
 var Monitors = make(map[string]PostMonitor)
 
 func init() {
+	Pictures = GetAllPictures()
 	PostList = GetAllPost()
 	for _, post := range PostList {
 		isPosted[post.Type+post.Mid] = true
@@ -68,7 +77,7 @@ func init() {
 // 返回给定时间之后的博文
 func GetPostByTime(BeginTime float64) []Post {
 	return Filter(PostList, func(p Post) bool {
-		return (p.Time >= BeginTime)
+		return (p.Time >= int64(BeginTime))
 	})
 }
 

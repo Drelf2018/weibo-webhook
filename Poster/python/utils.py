@@ -19,6 +19,15 @@ if not logger.handlers:
 
 
 @dataclass
+class User:
+    level: int
+    xp: int
+    uid: int
+    url: str
+    watch: List[str]
+
+
+@dataclass
 class Post:
     mid: str
     time: int
@@ -29,10 +38,13 @@ class Post:
     uid: str
     name: str
     face: str
-    follow: str
-    follower: str
+    pendant: str
     description: str
 
+    follower: str
+    following: str
+
+    Attachment: List[str]
     picUrls: List[str]
 
     @staticmethod
@@ -45,19 +57,22 @@ class Post:
             mblog: dict = card["mblog"]
             user: dict = mblog["user"]
             post = Post(
-                type = "weibo",
                 mid = mblog["mid"],
-                text = mblog["text"],
-                source = mblog["source"],
                 time = cls.created_at(mblog["created_at"]),
+                text = mblog["text"],
+                type = "weibo",
+                source = mblog["source"],
 
                 uid = user["id"],
-                face = user["avatar_hd"],
                 name = user["screen_name"],
-                follow = user["follow_count"],
+                face = user["avatar_hd"],
+                pendant = "",
                 description = user["description"],
-                follower = user["followers_count"],
 
+                follower = str(user["followers_count"]),
+                following = str(user["follow_count"]),
+
+                Attachment = [""],
                 picUrls = [p["large"]["url"] for p in mblog.get("pics", [])]
             )
         except Exception as e:
@@ -98,6 +113,21 @@ class Poster:
     
     def __exit__(self, type, value, trace): ...
 
+    def modify(self, user: User) -> User:
+        try:
+            res = httpx.post(f"{self.baseurl}/modify", params={
+                "uid": self.uid,
+                "token": self.token,
+            }, data=user.__dict__)
+            data = res.json()
+            if data["code"] == 0:
+                return User(**data["data"])
+            else:
+                raise Exception(data["data"])
+        except Exception as e:
+            logger.error(e)
+            return None
+
     def login(self) -> "Poster":
         try:
             res = httpx.get(f"{self.baseurl}/login", params={
@@ -107,7 +137,10 @@ class Poster:
             data = res.json()
             if data["code"] == 0:
                 self.__vaild = True
-                logger.info("用户 {uid} LV{level}({xp}/100) 登录成功".format_map(data["data"]))
+                self.users = [User(**u) for u in data["data"]]
+                for user in self.users:
+                    if user.uid == self.uid:
+                        logger.info(f"用户 {user.uid} LV{user.level}({user.xp}/100) 登录成功")
             else:
                 raise Exception(data["data"])
         except Exception as e:
