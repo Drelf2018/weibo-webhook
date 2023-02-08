@@ -263,17 +263,17 @@ func GetAllPost() (PostList []Post) {
 			// 将配图由序号转为链接
 			for _, pid := range strings.Split(PicUrls, ",") {
 				PicID, err := strconv.ParseInt(pid, 10, 64)
-				if printErr(err) {
+				if pid != "" && printErr(err) {
 					post.PicUrls = append(post.PicUrls, Pictures[PicID-1])
 				}
 			}
 			// 头像、装扮 同理
 			FaceID, err := strconv.ParseInt(post.Face, 10, 64)
-			if printErr(err) {
+			if post.Face != "" && printErr(err) {
 				post.Face = Pictures[FaceID-1]
 			}
 			PendantID, err := strconv.ParseInt(post.Pendant, 10, 64)
-			if printErr(err) {
+			if post.Pendant != "" && printErr(err) {
 				post.Pendant = Pictures[PendantID-1]
 			}
 			// 添加转发的微博

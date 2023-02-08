@@ -145,7 +145,7 @@ func (post *Post) Save(user *User) (int64, string) {
 	// 得分超过阈值，插入数据库
 	if monitor.Score >= 1 {
 		// 插入相似度最高的
-		MaxID, i, total := 0, 1, monitor.Len()
+		MaxID, i, total := 0, 0, monitor.Len()
 		for i < total {
 			p := monitor.Percent[i]
 			AnyTo(p > monitor.Percent[MaxID], &MaxID, i)

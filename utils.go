@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"time"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
@@ -56,7 +57,12 @@ func panicErr(err error) bool {
 // 如果出错则打印错误并返回 false 否则返回 true
 func printErr(err error) bool {
 	if err != nil {
-		log.Error(err)
+		_, file, line, ok := runtime.Caller(1)
+		if ok {
+			log.Errorf("%v occured in %v:%v", err, file, line)
+		} else {
+			log.Error(err)
+		}
 		return false
 	} else {
 		return true
