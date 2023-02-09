@@ -38,8 +38,10 @@ func GetToken(c *gin.Context, token string) (string, bool) {
 
 // 获取 beginTs 时间之后的所有博文
 func GetPost(c *gin.Context) {
-	TimeNow := float64(time.Now().Unix() - 5)
+	TimeNow := float64(time.Now().Unix() - 10)
+	StopTime := -1.0
 	beginTs := c.Query("beginTs")
+	stopTs := c.Query("stopTs")
 	if beginTs != "" {
 		var err error
 		TimeNow, err = strconv.ParseFloat(beginTs, 64)
@@ -51,9 +53,20 @@ func GetPost(c *gin.Context) {
 			return
 		}
 	}
+	if stopTs != "" {
+		var err error
+		StopTime, err = strconv.ParseFloat(stopTs, 64)
+		if err != nil {
+			c.JSON(400, gin.H{
+				"code": 2,
+				"data": err.Error(),
+			})
+			return
+		}
+	}
 	c.JSON(200, gin.H{
 		"code": 0,
-		"data": GetPostByTime(TimeNow),
+		"data": GetPostByTime(int64(TimeNow), int64(StopTime)),
 	})
 }
 

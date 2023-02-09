@@ -130,6 +130,7 @@ func (post *Post) Insert() (postID int64) {
 		return 0
 	}
 	PostList = append(PostList, *post)
+	AnyTo(post.Time > LastPostTime, &LastPostTime, post.Time)
 	return
 }
 

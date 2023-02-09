@@ -63,6 +63,7 @@ func In(user *User, pm *PostMonitor) bool {
 
 var PostList []Post
 var Pictures []string
+var LastPostTime int64
 var isPosted = make(map[string]bool)
 var Monitors = make(map[string]PostMonitor)
 
@@ -71,14 +72,25 @@ func init() {
 	PostList = GetAllPost()
 	for _, post := range PostList {
 		isPosted[post.Type+post.Mid] = true
+		AnyTo(post.Time > LastPostTime, &LastPostTime, post.Time)
 	}
 }
 
 // 返回给定时间之后的博文
-func GetPostByTime(BeginTime float64) []Post {
-	return Filter(PostList, func(p Post) bool {
-		return (p.Time >= int64(BeginTime))
+func GetPostByTime(BeginTime, StopTime int64) []Post {
+	if BeginTime > LastPostTime {
+		return []Post{}
+	}
+	index := sort.Search(len(PostList), func(i int) bool {
+		return PostList[i].Time >= BeginTime
 	})
+	stop := len(PostList)
+	if StopTime != -1 {
+		stop = index + sort.Search(len(PostList)-index, func(i int) bool {
+			return PostList[i+index].Time > StopTime
+		})
+	}
+	return PostList[index:stop]
 }
 
 // 去除空的子博文 Repost
