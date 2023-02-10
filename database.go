@@ -260,7 +260,11 @@ func GetAllPost() (PostList []Post) {
 		)
 		if printErr(err) {
 			// 分割附件
-			post.Attachment = strings.Split(Attachment, ",")
+			if Attachment == "" {
+				post.Attachment = []string{}
+			} else {
+				post.Attachment = strings.Split(Attachment, ",")
+			}
 			// 将配图由序号转为链接
 			for _, pid := range strings.Split(PicUrls, ",") {
 				PicID, err := strconv.ParseInt(pid, 10, 64)
