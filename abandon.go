@@ -39,9 +39,9 @@ func GetToken(c *gin.Context, token string) (string, bool) {
 // 获取 beginTs 时间之后的所有博文
 func GetPost(c *gin.Context) {
 	TimeNow := float64(time.Now().Unix() - 10)
-	StopTime := -1.0
+	EndTime := -1.0
 	beginTs := c.Query("beginTs")
-	stopTs := c.Query("stopTs")
+	endTs := c.Query("endTs")
 	if beginTs != "" {
 		var err error
 		TimeNow, err = strconv.ParseFloat(beginTs, 64)
@@ -53,9 +53,9 @@ func GetPost(c *gin.Context) {
 			return
 		}
 	}
-	if stopTs != "" {
+	if endTs != "" {
 		var err error
-		StopTime, err = strconv.ParseFloat(stopTs, 64)
+		EndTime, err = strconv.ParseFloat(endTs, 64)
 		if err != nil {
 			c.JSON(400, gin.H{
 				"code": 2,
@@ -65,8 +65,9 @@ func GetPost(c *gin.Context) {
 		}
 	}
 	c.JSON(200, gin.H{
-		"code": 0,
-		"data": GetPostByTime(int64(TimeNow), int64(StopTime)),
+		"code":    0,
+		"data":    GetPostByTime(int64(TimeNow), int64(EndTime)),
+		"updater": UpdateTime,
 	})
 }
 
@@ -85,6 +86,7 @@ func UpdatePost(c *gin.Context) {
 		err := c.Bind(&post)
 		if err == nil {
 			post.Empty()
+			UpdateTime[user.Uid] = time.Now().Unix()
 			log.Infof("用户 %v 提交 %v 级博文: %v", user.Uid, user.Level, post.Text)
 			code, msg := post.Save(&user)
 			log.Infof("用户 %v %v", user.Uid, msg)
@@ -281,6 +283,7 @@ func Cors() gin.HandlerFunc {
 
 // 全局配置
 var cfg Config
+var UpdateTime = make(map[int64]int64)
 var RandomToken = make(map[string][2]string)
 
 func init() {
