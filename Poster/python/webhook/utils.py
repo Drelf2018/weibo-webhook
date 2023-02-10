@@ -2,7 +2,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List
 
 import httpx
 
@@ -44,51 +44,37 @@ class Post:
     follower: str
     following: str
 
-    Attachment: List[str]
+    attachment: List[str]
     picUrls: List[str]
 
-    @staticmethod
-    def created_at(timeText: str) -> int:
-        return int(datetime.strptime(timeText, "%a %b %d %H:%M:%S %z %Y").timestamp())
+    repost: "Post"
 
     @classmethod
-    def parse(cls: "Post", card: dict) -> Tuple[Optional["Post"], Optional[Exception]]:
-        try:
-            mblog: dict = card["mblog"]
-            user: dict = mblog["user"]
-            post = Post(
-                mid = mblog["mid"],
-                time = cls.created_at(mblog["created_at"]),
-                text = mblog["text"],
-                type = "weibo",
-                source = mblog["source"],
+    def transform(cls: "Post", post: dict):
+        "将输入 parse 的数据字典转为 Post 格式"
+        return post
 
-                uid = user["id"],
-                name = user["screen_name"],
-                face = user["avatar_hd"],
-                pendant = "",
-                description = user["description"],
+    @classmethod
+    def parse(cls: "Post", post: dict) -> "Post":
+        "递归解析"
+        if post is None or len(post) == 0: return None
+        post = cls.transform(post)
+        return Post(repost=cls.parse(post.pop("repost")), **post)
 
-                follower = str(user["followers_count"]),
-                following = str(user["follow_count"]),
-
-                Attachment = [""],
-                picUrls = [p["large"]["url"] for p in mblog.get("pics", [])]
-            )
-        except Exception as e:
-            logger.error(e)
-            return None, e
-        return post, None
+    @property
+    def date(self) -> str:
+        "返回规定格式字符串时间"
+        return datetime.fromtimestamp(self.time).strftime("%H:%M:%S")
 
     @property
     def data(self) -> dict:
+        "返回可以以 data 发送至后端的数据格式"
         res = dict(self.__dict__)
-        res["repost"] = res.pop("_Post__repost", "null")
+        if self.repost is None:
+            res["repost"] = "null"
+        else:
+            res["repost"] = json.dumps(self.repost.data)
         return res
-
-    def set_repost(self, post: "Post") -> "Post":
-        self.__repost = json.dumps(post.data)
-        return self
 
 
 @dataclass
@@ -113,22 +99,8 @@ class Poster:
     
     def __exit__(self, type, value, trace): ...
 
-    def modify(self, user: User) -> User:
-        try:
-            res = httpx.post(f"{self.baseurl}/modify", params={
-                "uid": self.uid,
-                "token": self.token,
-            }, data=user.__dict__)
-            data = res.json()
-            if data["code"] == 0:
-                return User(**data["data"])
-            else:
-                raise Exception(data["data"])
-        except Exception as e:
-            logger.error(e)
-            return None
-
     def login(self) -> "Poster":
+        "登录"
         try:
             res = httpx.get(f"{self.baseurl}/login", params={
                 "uid": self.uid,
@@ -149,9 +121,38 @@ class Poster:
         return self
 
     def update(self, post: Post):
+        "增"
         if self.__vaild:
             res = httpx.post(f"{self.baseurl}/update", params={ "token": self.token }, data=post.data)
             data = res.json()
             logger.info(data["data"])
         else:
             logger.error("未登录")
+
+    def post(self, beginTs: int = 0, endTs: int = -1):
+        "查"
+        res = httpx.get(f"{self.baseurl}/post", params={ "beginTs": beginTs, "endTs": endTs })
+        data = res.json()
+        if data["code"] == 0:
+            logger.info(data["updater"])
+            return data["data"]
+        else:
+            logger.error(data["data"])
+            return []
+
+
+    def modify(self, user: User) -> User:
+        "改"
+        try:
+            res = httpx.post(f"{self.baseurl}/modify", params={
+                "uid": self.uid,
+                "token": self.token,
+            }, data=user.__dict__)
+            data = res.json()
+            if data["code"] == 0:
+                return User(**data["data"])
+            else:
+                raise Exception(data["data"])
+        except Exception as e:
+            logger.error(e)
+            return None
