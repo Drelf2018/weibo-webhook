@@ -20,24 +20,41 @@ func MakeDir(path string) {
 	}
 }
 
-// 下载图片到本地并更新数据库
-func Download(url, line string) {
+// 解析网址为本地
+func Url2Local(url string) string {
+	return imageFolder + "/" + strings.Split(path.Base(url), "?")[0]
+}
+
+// FileExists 判断一个文件是否存在
+//
+// 参考 https://blog.csdn.net/leo_jk/article/details/118255913
+func FileExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return false
+}
+
+// 下载图片到本地
+func Download(url string) {
+	local := Url2Local(url)
+	if url == "" || FileExists(local) {
+		return
+	}
+
 	resp, err := http.Get(url)
 	panicErr(err)
 	defer resp.Body.Close()
-
-	dir := "image/"
-	local := dir + strings.Split(path.Base(url), "?")[0]
-	MakeDir(dir)
 
 	file, err := os.Create(local)
 	panicErr(err)
 	defer file.Close()
 
 	_, err = io.Copy(file, resp.Body)
-	panicErr(err)
-
-	_, err = UpdatePicture(local, line)
 	panicErr(err)
 
 	log.Infof("图片 %v 下载完成", url)

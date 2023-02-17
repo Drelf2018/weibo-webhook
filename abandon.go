@@ -38,13 +38,13 @@ func GetToken(c *gin.Context, token string) (string, bool) {
 
 // 获取 beginTs 时间之后的所有博文
 func GetPost(c *gin.Context) {
-	TimeNow := float64(time.Now().Unix() - 10)
-	EndTime := -1.0
+	TimeNow := time.Now().Unix() - 10
+	var EndTime int64 = -1
 	beginTs := c.Query("beginTs")
 	endTs := c.Query("endTs")
 	if beginTs != "" {
 		var err error
-		TimeNow, err = strconv.ParseFloat(beginTs, 64)
+		TimeNow, err = strconv.ParseInt(beginTs, 10, 64)
 		if err != nil {
 			c.JSON(400, gin.H{
 				"code": 1,
@@ -55,7 +55,7 @@ func GetPost(c *gin.Context) {
 	}
 	if endTs != "" {
 		var err error
-		EndTime, err = strconv.ParseFloat(endTs, 64)
+		EndTime, err = strconv.ParseInt(endTs, 10, 64)
 		if err != nil {
 			c.JSON(400, gin.H{
 				"code": 2,
@@ -67,7 +67,7 @@ func GetPost(c *gin.Context) {
 	UpdateTime[0] = time.Now().Unix()
 	c.JSON(200, gin.H{
 		"code":   0,
-		"data":   GetPostByTime(int64(TimeNow), int64(EndTime)),
+		"data":   SavedPosts.GetPostByTime(TimeNow, EndTime),
 		"poster": UpdateTime,
 	})
 }
@@ -205,6 +205,7 @@ func BeforeLogin(c *gin.Context) (*User, int) {
 	return nil, 1
 }
 
+// 登录
 func Login(c *gin.Context) {
 	user, err := BeforeLogin(c)
 	switch err {
@@ -239,6 +240,7 @@ func Login(c *gin.Context) {
 	}
 }
 
+// 修改用户信息
 func Modify(c *gin.Context) {
 	user, err := BeforeLogin(c)
 	switch err {
@@ -284,7 +286,14 @@ func Cors() gin.HandlerFunc {
 
 // 全局配置
 var cfg Config
+
+// 资源文件夹
+var imageFolder = "./image"
+
+// 更新博文的时间
 var UpdateTime = make(map[int64]int64)
+
+// 随机密钥
 var RandomToken = make(map[string][2]string)
 
 func init() {
@@ -295,6 +304,9 @@ func init() {
 		panic("请填写动态oid")
 	}
 	GetReplies = GetRequest(cfg.Oid)
+
+	// 初始化文件夹
+	MakeDir(imageFolder)
 }
 
 func main() {
@@ -306,8 +318,14 @@ func main() {
 	// 跨域设置
 	r.Use(Cors())
 
-	r.Static("image", "image")
-	r.StaticFile("favicon.ico", "image/favicon.ico")
+	r.Static("image", imageFolder)
+	r.StaticFile("favicon.ico", imageFolder+"/favicon.ico")
+
+	// 解析图片网址并返回文件
+	// 参考 https://blog.csdn.net/kilmerfun/article/details/123943070 https://blog.csdn.net/weixin_52690231/article/details/124109518
+	r.GET("url/*u", func(c *gin.Context) {
+		c.File(Url2Local(c.Param("u")))
+	})
 
 	r.GET("login", Login)
 	r.GET("post", GetPost)
