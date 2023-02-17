@@ -95,6 +95,12 @@ func GetPostByTime(BeginTime, StopTime int64) []Post {
 
 // 去除空的子博文 Repost
 func (post *Post) Empty() {
+	if post.PicUrls == nil {
+		post.PicUrls = []string{}
+	}
+	if post.Attachment == nil {
+		post.Attachment = []string{}
+	}
 	if post.Repost == nil {
 		return
 	}

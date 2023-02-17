@@ -64,10 +64,11 @@ func GetPost(c *gin.Context) {
 			return
 		}
 	}
+	UpdateTime[0] = time.Now().Unix()
 	c.JSON(200, gin.H{
-		"code":    0,
-		"data":    GetPostByTime(int64(TimeNow), int64(EndTime)),
-		"updater": UpdateTime,
+		"code":   0,
+		"data":   GetPostByTime(int64(TimeNow), int64(EndTime)),
+		"poster": UpdateTime,
 	})
 }
 
@@ -306,6 +307,7 @@ func main() {
 	r.Use(Cors())
 
 	r.Static("image", "image")
+	r.StaticFile("favicon.ico", "image/favicon.ico")
 
 	r.GET("login", Login)
 	r.GET("post", GetPost)

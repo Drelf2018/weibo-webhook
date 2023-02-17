@@ -266,12 +266,17 @@ func GetAllPost() (PostList []Post) {
 				post.Attachment = strings.Split(Attachment, ",")
 			}
 			// 将配图由序号转为链接
-			for _, pid := range strings.Split(PicUrls, ",") {
-				PicID, err := strconv.ParseInt(pid, 10, 64)
-				if pid != "" && printErr(err) {
-					post.PicUrls = append(post.PicUrls, Pictures[PicID-1])
+			if PicUrls == "" {
+				post.PicUrls = []string{}
+			} else {
+				for _, pid := range strings.Split(PicUrls, ",") {
+					PicID, err := strconv.ParseInt(pid, 10, 64)
+					if pid != "" && printErr(err) {
+						post.PicUrls = append(post.PicUrls, Pictures[PicID-1])
+					}
 				}
 			}
+
 			// 头像、装扮 同理
 			FaceID, err := strconv.ParseInt(post.Face, 10, 64)
 			if post.Face != "" && printErr(err) {
