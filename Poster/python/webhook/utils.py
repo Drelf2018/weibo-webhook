@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -12,10 +13,23 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(
         logging.Formatter(
-            "[Poster][%(asctime)s][%(levelname)s]: %(message)s", "%H:%M:%S"
+            "[Poster][%(asctime)s][%(levelname)s][%(filename)s:%(lineno)d]: %(message)s", "%H:%M:%S"
         )
     )
     logger.addHandler(handler)
+
+
+def count(start: int = 0):
+    " 计数装饰器"
+    def inner(fn):
+        times = start
+        async def wapper(*arg, **kwargs):
+            nonlocal times
+            logger.info("第 %d 次轮询", times)
+            times += 1
+            return await fn(*arg, **kwargs)
+        return wapper
+    return inner
 
 
 @dataclass
@@ -77,27 +91,58 @@ class Post:
         return res
 
 
+class Request:
+    "通用请求类"
+
+    BaseHeaders = {
+        "Connection": "keep-alive",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.62 Safari/537.36",
+    }
+
+    def __init__(self, headers: dict = BaseHeaders, cookies: str = ""):
+        if cookies: headers.update("cookie", cookies)
+        self.session = httpx.AsyncClient(headers=headers)
+
+    def __del__(self):
+        # Use the loop to call async close, then stop/close loop.
+        asyncio.get_event_loop().create_task(self.session.aclose())
+
+    async def get(self, url: str, **kwargs):
+        return await self.session.get(url, **kwargs)
+
+    async def post(self, url: str, **kwargs):
+        return await self.session.post(url, **kwargs)
+
+
 @dataclass
 class Poster:
     """
     usage:
 
-    with Poster(uid, token, url) as poster:
-        poster.update(post)
+    async with Poster(uid, token, url) as poster:
+        await poster.update(post)
 
     or
 
     poster = Poster(uid, token, url).login()
     
-    poster.update(post)
+    await poster.update(post)
     """
     uid: int
     token: str
     baseurl: str
+    session: Request = Request()
 
-    def __enter__(self): return self.login()
+    async def __aenter__(self): return self.login()
     
-    def __exit__(self, type, value, trace): ...
+    async def __aexit__(self, type, value, trace): ...
+
+    def __del__(self):
+        del self.session
 
     def login(self) -> "Poster":
         "登录"
@@ -120,31 +165,33 @@ class Poster:
             self.__vaild = False
         return self
 
-    def update(self, post: Post):
+    async def update(self, post: Post):
         "增"
         if self.__vaild:
-            res = httpx.post(f"{self.baseurl}/update", params={ "token": self.token }, data=post.data)
+            res = await self.session.post(f"{self.baseurl}/update", params={ "token": self.token }, data=post.data)
             data = res.json()
-            logger.info(data["data"])
+            logger.debug(data["data"])
+            # res = await self.session.post(f"https://httpbin.org/post", params={ "token": self.token }, data=post.data)
+            # data = res.json()
+            # logger.info(data["form"])
         else:
             logger.error("未登录")
 
-    def post(self, beginTs: int = 0, endTs: int = -1):
+    async def post(self, beginTs: int = 0, endTs: int = -1):
         "查"
-        res = httpx.get(f"{self.baseurl}/post", params={ "beginTs": beginTs, "endTs": endTs })
+        res = await self.session.get(f"{self.baseurl}/post", params={ "beginTs": beginTs, "endTs": endTs })
         data = res.json()
         if data["code"] == 0:
-            logger.info(data["updater"])
             return data["data"]
         else:
             logger.error(data["data"])
             return []
 
 
-    def modify(self, user: User) -> User:
+    async def modify(self, user: User) -> User:
         "改"
         try:
-            res = httpx.post(f"{self.baseurl}/modify", params={
+            res = await self.session.post(f"{self.baseurl}/modify", params={
                 "uid": self.uid,
                 "token": self.token,
             }, data=user.__dict__)

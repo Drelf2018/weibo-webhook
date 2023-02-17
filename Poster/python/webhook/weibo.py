@@ -3,7 +3,7 @@ from typing import List
 
 from lxml import etree
 
-from .utils import Post
+from .utils import Post, Request, logger
 
 
 class WeiboPost(Post):
@@ -35,6 +35,23 @@ class WeiboPost(Post):
             "picUrls": [p["large"]["url"] for p in mblog.get("pics", [])],
             "repost": mblog.get("retweeted_status")
         }
+
+
+class WeiboRequest(Request):
+    def __init__(self, cookies: str):
+        super().__init__(cookies=cookies)
+
+    async def get(self, uid: int | str):
+        try:
+            res = await self.session.get(f"https://m.weibo.cn/api/container/getIndex?containerid=107603{uid}")
+            try:
+                for card in res.json()["data"]["cards"][::-1]:
+                    if card["card_type"] != 9: continue
+                    yield WeiboPost.parse(card["mblog"])
+            except Exception as e:
+                logger.error(e)
+        except Exception as e:
+            logger.error(e)
 
 
 def parse_text(text: str):

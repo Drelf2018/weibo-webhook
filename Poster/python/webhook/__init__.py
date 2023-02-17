@@ -1,2 +1,2 @@
-from .utils import Post, Poster, logger
-from .weibo import WeiboPost, parse_text, get_content
+from .utils import Post, Poster, Request, logger, count
+from .weibo import WeiboPost, WeiboRequest, parse_text, get_content
