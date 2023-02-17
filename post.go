@@ -30,6 +30,75 @@ type Post struct {
 	Repost     *Post    `form:"repost" json:"repost"`
 }
 
+type PostList struct {
+	// 列表长度
+	Length int
+	// 最近博文时间
+	LastPostTime int64
+	// 博文列表
+	Posts []Post
+	// 是否存在
+	Positions map[string]int
+}
+
+func (pl *PostList) Len() int {
+	return pl.Length
+}
+
+func (pl *PostList) Swap(i, j int) {
+	iPostID := pl.Posts[i].Type + pl.Posts[i].Mid
+	jPostID := pl.Posts[j].Type + pl.Posts[j].Mid
+	pl.Positions[iPostID] = j
+	pl.Positions[jPostID] = i
+	pl.Posts[i], pl.Posts[j] = pl.Posts[j], pl.Posts[i]
+}
+
+func (pl *PostList) Less(i, j int) bool {
+	return pl.Posts[i].Time < pl.Posts[j].Time
+}
+
+func (pl *PostList) PushBottom(post Post) {
+	pl.Length += 1
+	AnyTo(post.Time > pl.LastPostTime, &pl.LastPostTime, post.Time)
+	pl.Posts = append(pl.Posts, post)
+	pl.Positions[post.Type+post.Mid] = pl.Length - 1
+}
+
+func (pl *PostList) PushSort(post Post) {
+	pl.PushBottom(post)
+	sort.Sort(pl)
+}
+
+// 根据名称返回博文
+func (pl *PostList) GetPostByName(name string) *Post {
+	if name == "" {
+		return nil
+	}
+	pos, ok := pl.Positions[name]
+	if ok && pos != -1 {
+		return &pl.Posts[pos]
+	}
+	log.Errorf("博文 %v 不存在", name)
+	return nil
+}
+
+// 返回给定时间之后的博文
+func (pl *PostList) GetPostByTime(BeginTime, EndTime int64) []Post {
+	if BeginTime > pl.LastPostTime {
+		return []Post{}
+	}
+	end := pl.Length
+	index := sort.Search(end, func(i int) bool {
+		return pl.Posts[i].Time >= BeginTime
+	})
+	if EndTime != -1 {
+		end = index + sort.Search(end-index, func(i int) bool {
+			return pl.Posts[i+index].Time > EndTime
+		})
+	}
+	return pl.Posts[index:end]
+}
+
 // 博文检查器
 type PostMonitor struct {
 	Score   float64
@@ -61,36 +130,11 @@ func In(user *User, pm *PostMonitor) bool {
 	return index < pm.Len()
 }
 
-var PostList []Post
-var Pictures []string
-var LastPostTime int64
-var isPosted = make(map[string]bool)
+var SavedPosts = PostList{0, 0, []Post{}, make(map[string]int)}
 var Monitors = make(map[string]PostMonitor)
 
 func init() {
-	Pictures = GetAllPictures()
-	PostList = GetAllPost()
-	for _, post := range PostList {
-		isPosted[post.Type+post.Mid] = true
-		AnyTo(post.Time > LastPostTime, &LastPostTime, post.Time)
-	}
-}
-
-// 返回给定时间之后的博文
-func GetPostByTime(BeginTime, StopTime int64) []Post {
-	if BeginTime > LastPostTime {
-		return []Post{}
-	}
-	index := sort.Search(len(PostList), func(i int) bool {
-		return PostList[i].Time >= BeginTime
-	})
-	stop := len(PostList)
-	if StopTime != -1 {
-		stop = index + sort.Search(len(PostList)-index, func(i int) bool {
-			return PostList[i+index].Time > StopTime
-		})
-	}
-	return PostList[index:stop]
+	GetAllPost(&SavedPosts)
 }
 
 // 去除空的子博文 Repost
@@ -122,10 +166,10 @@ func (post *Post) Empty() {
 // 2: 博文已被储存
 func (post *Post) Save(user *User) (int64, string) {
 	// 判断是否已推送
-	posted, ok := isPosted[post.Type+post.Mid]
+	pos, ok := SavedPosts.Positions[post.Type+post.Mid]
 	if !ok {
-		isPosted[post.Type+post.Mid] = false
-	} else if posted {
+		SavedPosts.Positions[post.Type+post.Mid] = -1
+	} else if pos != -1 {
 		return 2, "博文已经储存"
 	}
 	// 获取检查器
@@ -176,8 +220,7 @@ func (post *Post) Save(user *User) (int64, string) {
 		go Webhook(FinalPost)
 		FinalPost.Insert()
 
-		// 清理占用，但要留下 isPosted 避免重复提交
-		isPosted[FinalPost.Type+FinalPost.Mid] = true
+		// 清理占用
 		delete(Monitors, FinalPost.Type+FinalPost.Mid)
 	}
 	return 0, "提交成功"
