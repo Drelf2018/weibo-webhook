@@ -1,4 +1,4 @@
-package main
+package webhook
 
 import (
 	"math/rand"
@@ -297,7 +297,7 @@ func init() {
 	GetReplies = GetRequest(cfg.Oid)
 }
 
-func main() {
+func Run(addr ...string) {
 	// 运行 gin 服务器
 	gin.SetMode(Any(cfg.Debug, gin.DebugMode, gin.ReleaseMode))
 
@@ -317,5 +317,5 @@ func main() {
 	r.POST("modify", Modify)
 	r.POST("update", UpdatePost)
 
-	r.Run(":5664") // listen and serve on 0.0.0.0:5664
+	r.Run(addr...) // listen and serve on 0.0.0.0:8080
 }

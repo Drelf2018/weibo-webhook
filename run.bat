@@ -1,1 +1,1 @@
-go run abandon.go utils.go database.go network.go post.go config.go --debug --oid=643451139714449427
+go run Poster/main.go --debug --oid=643451139714449427
