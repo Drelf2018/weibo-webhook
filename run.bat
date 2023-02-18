@@ -1,1 +1,1 @@
-go run Poster/main.go --debug --oid=643451139714449427
+go run Poster/weibo-webhook.go --debug --oid=643451139714449427

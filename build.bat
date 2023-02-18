@@ -1,0 +1,1 @@
+go build Poster\weibo-webhook.go

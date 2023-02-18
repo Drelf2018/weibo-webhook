@@ -324,7 +324,7 @@ func Run(addr ...string) {
 	// 解析图片网址并返回文件
 	// 参考 https://blog.csdn.net/kilmerfun/article/details/123943070 https://blog.csdn.net/weixin_52690231/article/details/124109518
 	r.GET("url/*u", func(c *gin.Context) {
-		c.File(Url2Local(c.Param("u")))
+		c.File(Download(c.Param("u")[1:]))
 	})
 
 	r.GET("login", Login)

@@ -40,8 +40,8 @@ func FileExists(path string) bool {
 }
 
 // 下载图片到本地
-func Download(url string) {
-	local := Url2Local(url)
+func Download(url string) (local string) {
+	local = Url2Local(url)
 	if url == "" || FileExists(local) {
 		return
 	}
@@ -58,6 +58,7 @@ func Download(url string) {
 	panicErr(err)
 
 	log.Infof("图片 %v 下载完成", url)
+	return
 }
 
 // 将 Post 信息 Post 给用户 什么双关
