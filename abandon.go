@@ -38,7 +38,8 @@ func GetToken(c *gin.Context, token string) (string, bool) {
 
 // 获取 beginTs 时间之后的所有博文
 func GetPost(c *gin.Context) {
-	TimeNow := time.Now().Unix() - 10
+	// 10 秒的冗余还是太短了啊 没事的 10 秒也很厉害了
+	TimeNow := time.Now().Unix() - 30
 	var EndTime int64 = -1
 	beginTs := c.Query("beginTs")
 	endTs := c.Query("endTs")

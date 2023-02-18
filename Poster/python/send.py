@@ -5,7 +5,10 @@ session = WeiboRequest("")
 
 async def weibo(uid: int):
     async for post in session.get(uid):
-        await poster2.update(post)
+        await poster.update(post)
+    if post is not None:
+        async for comment in session.comment(post):
+            if comment.uid == uid:
+                await poster.update(comment)
 
 Poster.add_job(fn=weibo, name="七海", count=1, start=2, args=[7198559139])
-Poster.run([poster1, poster2])
