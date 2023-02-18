@@ -196,6 +196,13 @@ class Poster(Request):
             return None
     
     @classmethod
+    def add_job(cls: "Poster", fn, start: int = 0, interval: int = 5, name: str = "", count: int = -1, args: list = list(), kwargs: dict = dict()):
+        @cls.scheduler.scheduled_job("interval", next_run_time=cls.run_time(start), seconds=interval, args=args, kwargs=kwargs)
+        @countLog(name, count)
+        async def wapper(*arg, **kwargs):
+            return await fn(*arg, **kwargs)
+
+    @classmethod
     def job(cls: "Poster", start: int = 0, interval: int = 5, name: str = "", count: int = -1, args: list = list(), kwargs: dict = dict()):
         "轮询装饰器"
         def inner(fn):
