@@ -1,11 +1,11 @@
 import asyncio
-import json
+import datetime
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import List
 
 import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logger = logging.getLogger("Poster")
 logger.setLevel(logging.INFO)
@@ -19,13 +19,14 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-def count(start: int = 0):
-    " 计数装饰器"
+def countLog(name: str = "", start: int = 0):
+    "计数装饰器"
     def inner(fn):
+        if start < 0: return fn
         times = start
         async def wapper(*arg, **kwargs):
             nonlocal times
-            logger.info("第 %d 次轮询", times)
+            logger.info("%s 第 %d 次轮询", name, times)
             times += 1
             return await fn(*arg, **kwargs)
         return wapper
@@ -78,16 +79,14 @@ class Post:
     @property
     def date(self) -> str:
         "返回规定格式字符串时间"
-        return datetime.fromtimestamp(self.time).strftime("%H:%M:%S")
+        return datetime.datetime.fromtimestamp(self.time).strftime("%H:%M:%S")
 
     @property
     def data(self) -> dict:
         "返回可以以 data 发送至后端的数据格式"
         res = dict(self.__dict__)
-        if self.repost is None:
-            res["repost"] = "null"
-        else:
-            res["repost"] = json.dumps(self.repost.data)
+        if self.repost is not None:
+            res["repost"] = self.repost.data
         return res
 
 
@@ -104,22 +103,11 @@ class Request:
     }
 
     def __init__(self, headers: dict = BaseHeaders, cookies: str = ""):
-        if cookies: headers.update("cookie", cookies)
+        if cookies: headers.update({"cookie": cookies})
         self.session = httpx.AsyncClient(headers=headers)
 
-    def __del__(self):
-        # Use the loop to call async close, then stop/close loop.
-        asyncio.get_event_loop().create_task(self.session.aclose())
 
-    async def get(self, url: str, **kwargs):
-        return await self.session.get(url, **kwargs)
-
-    async def post(self, url: str, **kwargs):
-        return await self.session.post(url, **kwargs)
-
-
-@dataclass
-class Poster:
+class Poster(Request):
     """
     usage:
 
@@ -128,26 +116,31 @@ class Poster:
 
     or
 
-    poster = Poster(uid, token, url).login()
-    
+    poster = Poster(uid, token, url)
+
+    await poster.login()
+
     await poster.update(post)
     """
-    uid: int
-    token: str
-    baseurl: str
-    session: Request = Request()
+    
+    scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
+    run_time = lambda seconds: datetime.datetime.now() + datetime.timedelta(seconds=seconds)
 
-    async def __aenter__(self): return self.login()
+    def __init__(self, uid: int, token: str, baseurl: str):
+        self.uid = uid
+        self.token = token
+        self.baseurl = baseurl
+        
+        super().__init__()
+
+    async def __aenter__(self): return await self.login()
     
     async def __aexit__(self, type, value, trace): ...
 
-    def __del__(self):
-        del self.session
-
-    def login(self) -> "Poster":
+    async def login(self) -> "Poster":
         "登录"
         try:
-            res = httpx.get(f"{self.baseurl}/login", params={
+            res = await self.session.get(f"{self.baseurl}/login", params={
                 "uid": self.uid,
                 "token": self.token,
             })
@@ -157,6 +150,7 @@ class Poster:
                 self.users = [User(**u) for u in data["data"]]
                 for user in self.users:
                     if user.uid == self.uid:
+                        self.me = user
                         logger.info(f"用户 {user.uid} LV{user.level}({user.xp}/100) 登录成功")
             else:
                 raise Exception(data["data"])
@@ -168,25 +162,22 @@ class Poster:
     async def update(self, post: Post):
         "增"
         if self.__vaild:
-            res = await self.session.post(f"{self.baseurl}/update", params={ "token": self.token }, data=post.data)
+            res = await self.session.post(f"{self.baseurl}/update", params={ "token": self.token }, json=post.data)
             data = res.json()
-            logger.debug(data["data"])
-            # res = await self.session.post(f"https://httpbin.org/post", params={ "token": self.token }, data=post.data)
-            # data = res.json()
-            # logger.info(data["form"])
+            if data["code"] != 2:
+                logger.info(data["data"])
         else:
             logger.error("未登录")
 
     async def post(self, beginTs: int = 0, endTs: int = -1):
         "查"
-        res = await self.session.get(f"{self.baseurl}/post", params={ "beginTs": beginTs, "endTs": endTs })
+        res = await self.session.get(f"{self.baseurl}/post", params={ "beginTs": int(beginTs), "endTs": int(endTs) })
         data = res.json()
         if data["code"] == 0:
             return data["data"]
         else:
             logger.error(data["data"])
             return []
-
 
     async def modify(self, user: User) -> User:
         "改"
@@ -203,3 +194,25 @@ class Poster:
         except Exception as e:
             logger.error(e)
             return None
+    
+    @classmethod
+    def job(cls: "Poster", start: int = 0, interval: int = 5, name: str = "", count: int = -1, args: list = list(), kwargs: dict = dict()):
+        "轮询装饰器"
+        def inner(fn):
+            @cls.scheduler.scheduled_job("interval", next_run_time=cls.run_time(start), seconds=interval, args=args, kwargs=kwargs)
+            @countLog(name, count)
+            async def wapper(*arg, **kwargs):
+                return await fn(*arg, **kwargs)
+            return wapper
+        return inner
+
+    @classmethod
+    def run(cls: "Poster", posters: List["Poster"] = list()):
+        async def inner():
+            cls.scheduler.start()
+            while True:
+                await asyncio.sleep(60)
+        loop = asyncio.new_event_loop()
+        for poster in posters:
+            loop.create_task(poster.login())
+        loop.run_until_complete(inner())

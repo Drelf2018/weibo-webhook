@@ -22,7 +22,7 @@ class WeiboPost(Post):
             "type": "weibo",
             "source": mblog["source"],
 
-            "uid": user["id"],
+            "uid": str(user["id"]),
             "name": user["screen_name"],
             "face": user["avatar_hd"],
             "pendant": "",
