@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict
 
 from lxml import etree
 
-from .utils import Post, Request, logger
+from .utils import Post, Request, Comments
 
 
 class WeiboPost(Post):
@@ -14,7 +14,8 @@ class WeiboPost(Post):
 
     @classmethod
     def transform(cls: "WeiboPost", mblog: dict):
-        user: dict = mblog["user"]
+        user: dict = mblog.get("user", {})
+        if user is None: user = dict()
         return {
             "mid": str(mblog["mid"]),
             "time": cls.created_at(mblog["created_at"]),
@@ -22,14 +23,14 @@ class WeiboPost(Post):
             "type": "weibo",
             "source": mblog["source"],
 
-            "uid": str(user["id"]),
-            "name": user["screen_name"],
-            "face": user["avatar_hd"],
+            "uid": str(user.get("id")),
+            "name": user.get("screen_name"),
+            "face": user.get("avatar_hd"),
             "pendant": "",
-            "description": user["description"],
+            "description": user.get("description"),
 
-            "follower": str(user["followers_count"]),
-            "following": str(user["follow_count"]),
+            "follower": str(user.get("followers_count")),
+            "following": str(user.get("follow_count")),
 
             "attachment": [],
             "picUrls": [p["large"]["url"] for p in mblog.get("pics", [])],
@@ -46,9 +47,7 @@ class WeiboComment(Post):
         """
         created_at = datetime.now()
         
-        if u"刚刚" in timeText:
-            created_at = datetime.now()
-        elif u"分钟" in timeText:
+        if u"分钟" in timeText:
             minute = timeText[:timeText.find(u"分钟")]
             minute = timedelta(minutes=int(minute))
             created_at -= minute
@@ -66,8 +65,8 @@ class WeiboComment(Post):
 
     @classmethod
     def transform(cls: "WeiboComment", com: dict):
-        user: dict = com["user"]
-        reply: str = com.get("reply_text", None)
+        user: dict = com.get("user", {})
+        if user is None: user = dict()
         pic: str = com.get("pic", {}).get("large", {}).get("url", None)
         return {
             "mid": str(com["id"]),
@@ -76,47 +75,54 @@ class WeiboComment(Post):
             "type": "weiboComment",
             "source": com["source"],
 
-            "uid": str(user["id"]),
-            "name": user["screen_name"],
-            "face": user["profile_image_url"],
+            "uid": str(user.get("id")),
+            "name": user.get("screen_name"),
+            "face": user.get("profile_image_url"),
             "pendant": "",
             "description": "",
 
-            "follower": str(user["followers_count"]),
-            "following": str(user["friends_count"]),
+            "follower": str(user.get("followers_count")),
+            "following": str(user.get("friends_count")),
 
-            "attachment": [reply] if reply else [],
+            "attachment": com["attachment"],
             "picUrls": [pic] if pic else [],
-            "repost": None
+            "repost": com["repost"]
         }
 
 
 class WeiboRequest(Request):
     def __init__(self, cookies: str):
         super().__init__(cookies=cookies)
+        self.usersComments: Dict[str, Comments] = dict()
 
-    async def get(self, uid: int | str):
-        try:
-            res = await self.session.get(f"https://m.weibo.cn/api/container/getIndex?containerid=107603{uid}")
-            for card in res.json()["data"]["cards"][::-1]:
-                try:
-                    if card["card_type"] != 9: continue
-                    yield WeiboPost.parse(card["mblog"])
-                except Exception as e:
-                    logger.error(e)
-        except Exception as e:
-            logger.error(e)
+    async def posts(self, uid: int | str):
+        data = await self.request("GET", f"https://m.weibo.cn/api/container/getIndex?containerid=107603{uid}")
+        if data is None:
+            return
+        for card in data["data"]["cards"][::-1]:
+            if card["card_type"] != 9: continue
+            yield WeiboPost.parse(card["mblog"])
 
-    async def comment(self, post: WeiboPost):
-        try:
-            res = await self.session.get(f"https://m.weibo.cn/api/comments/show?id={post.mid}")
-            for com in res.json()["data"]["data"][::-1]:
-                try:
-                    yield WeiboComment.parse(com)
-                except Exception as e:
-                    logger.error(e)
-        except Exception as e:
-            logger.error(e)
+    async def comments(self, post: WeiboPost):
+        data = await self.request("GET", f"https://m.weibo.cn/api/comments/show?id={post.mid}")
+        if data is None:
+            return
+
+        # 清空储存的评论
+        postName = post.type + post.mid
+        if self.usersComments.get(post.uid, None) is None:
+            self.usersComments[post.uid] = Comments(postName)
+        elif self.usersComments[post.uid].post != postName:
+            self.usersComments[post.uid] = Comments(postName)
+
+        for com in data["data"]["data"][::-1]:
+            mid = str(com["id"])
+            if mid in self.usersComments[post.uid].comments: continue
+
+            com["attachment"] = [postName]
+            com["repost"] = self.usersComments[post.uid].comments.get(str(com.get("reply_id", "")), None)
+            self.usersComments[post.uid].comments[mid] = com
+            yield WeiboComment.parse(com)
 
 
 def parse_text(text: str):

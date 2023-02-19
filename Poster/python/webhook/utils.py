@@ -1,8 +1,8 @@
 import asyncio
 import datetime
 import logging
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Dict
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -90,6 +90,12 @@ class Post:
         return res
 
 
+@dataclass
+class Comments:
+    post: str
+    comments: Dict[str, Post] = field(default_factory=dict)
+
+
 class Request:
     "通用请求类"
 
@@ -105,6 +111,15 @@ class Request:
     def __init__(self, headers: dict = BaseHeaders, cookies: str = ""):
         if cookies: headers.update({"cookie": cookies})
         self.session = httpx.AsyncClient(headers=headers)
+
+    async def request(self, method, url, *args, **kwargs):
+        try:
+            res = await self.session.request(method, url, *args, **kwargs)
+            assert res.status_code == 200, "请求失败"
+            return res.json()
+        except Exception as e:
+            logger.error(e)
+            return None
 
 
 class Poster(Request):
@@ -214,7 +229,7 @@ class Poster(Request):
         return inner
 
     @classmethod
-    def run(cls: "Poster", posters: List["Poster"] = list()):
+    def run(cls: "Poster", *posters: "Poster"):
         async def inner():
             cls.scheduler.start()
             while True:
