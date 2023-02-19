@@ -13,3 +13,4 @@ async def weibo(uid: str):
                 await poster.update(comment)
 
 Poster.add_job(fn=weibo, name="七海", count=1, start=2, args=[7198559139])
+Poster.run(poster)
