@@ -54,6 +54,9 @@ func (pl *PostList) Swap(i, j int) {
 }
 
 func (pl *PostList) Less(i, j int) bool {
+	if pl.Posts[i].Time == pl.Posts[j].Time {
+		return pl.Posts[i].Mid < pl.Posts[j].Mid
+	}
 	return pl.Posts[i].Time < pl.Posts[j].Time
 }
 

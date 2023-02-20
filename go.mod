@@ -37,6 +37,5 @@ require (
 )
 
 require (
-	github.com/gin-contrib/cors v1.4.0 // direct
 	github.com/liu-cn/json-filter v0.0.0-20230128143931-8c3b67ab5d53 // direct
 )
