@@ -12,28 +12,41 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-func GetUID(c *gin.Context) (string, bool) {
-	UID, ok := c.GetQuery("uid")
-	if !ok {
+func ExprCTX(expr bool, c *gin.Context, code int, msg string) bool {
+	if expr {
 		c.JSON(400, gin.H{
-			"code": 1,
-			"data": "UID 获取失败",
+			"code": code,
+			"data": msg,
 		})
-		return "", false
 	}
-	return UID, true
+	return expr
 }
 
-func GetToken(c *gin.Context, token string) (string, bool) {
-	Token, ok := c.GetQuery("token")
-	if !ok || (token != "" && Token != token) {
+func ErrorCTX(err error, c *gin.Context, code int) bool {
+	if !printErr(err) {
 		c.JSON(400, gin.H{
-			"code": 1,
-			"data": "Token 获取失败",
+			"code": code,
+			"data": err.Error(),
 		})
-		return "", false
+		return true
 	}
-	return Token, true
+	return false
+}
+
+func GetUserByQuery(c *gin.Context) (int64, string, string) {
+	Token, ok := c.GetQuery("token")
+	if !ok {
+		Token = ""
+	}
+	UID, ok := c.GetQuery("uid")
+	if !ok {
+		UID = ""
+	}
+	uid, err := strconv.ParseInt(UID, 10, 64)
+	if err != nil {
+		uid = 0
+	}
+	return uid, UID, Token
 }
 
 // 获取 beginTs 时间之后的所有博文
@@ -46,22 +59,14 @@ func GetPost(c *gin.Context) {
 	if beginTs != "" {
 		var err error
 		TimeNow, err = strconv.ParseInt(beginTs, 10, 64)
-		if err != nil {
-			c.JSON(400, gin.H{
-				"code": 1,
-				"data": err.Error(),
-			})
+		if ErrorCTX(err, c, 1) {
 			return
 		}
 	}
 	if endTs != "" {
 		var err error
 		EndTime, err = strconv.ParseInt(endTs, 10, 64)
-		if err != nil {
-			c.JSON(400, gin.H{
-				"code": 2,
-				"data": err.Error(),
-			})
+		if ErrorCTX(err, c, 2) {
 			return
 		}
 	}
@@ -75,45 +80,41 @@ func GetPost(c *gin.Context) {
 
 // 提交博文
 func UpdatePost(c *gin.Context) {
-	if token, ok := GetToken(c, ""); ok {
-		user := GetUserByKey("token", token)
-		if user.Token != token {
-			c.JSON(400, gin.H{
-				"code": 2,
-				"data": "Token 验证失败",
-			})
-			return
-		}
-		var post Post
-		err := c.Bind(&post)
-		if err == nil {
-			post.Empty()
-			UpdateTime[user.Uid] = time.Now().Unix()
-			log.Infof("用户 %v 提交 %v 级博文: %v", user.Uid, user.Level, post.Text)
-			code, msg := post.Save(&user)
-			log.Infof("用户 %v %v", user.Uid, msg)
-			c.JSON(200, gin.H{
-				"code": code,
-				"data": msg,
-			})
-		} else {
-			log.Errorf("用户 %v 提交失败: %v", user.Uid, err.Error())
-			c.JSON(400, gin.H{
-				"code": 3,
-				"data": err.Error(),
-			})
-		}
+	_, _, Token := GetUserByQuery(c)
+	user := GetUserByKey("token", Token)
+	if ExprCTX(user.Token != Token, c, 2, "Token 验证失败") {
+		return
 	}
+
+	var post Post
+	err := c.Bind(&post)
+	if ErrorCTX(err, c, 3) {
+		log.Errorf("用户 %v 提交失败: %v", user.Uid, err.Error())
+		return
+	}
+	post.Empty()
+	UpdateTime[user.Uid] = time.Now().Unix()
+	log.Infof("用户 %v 提交 %v 级博文: %v", user.Uid, user.Level, post.Text)
+	code, msg := post.Save(&user)
+	log.Infof("用户 %v %v", user.Uid, msg)
+	c.JSON(200, gin.H{
+		"code": code,
+		"data": msg,
+	})
 }
 
 // 注册
 func Register(c *gin.Context) {
-	UID, ok := GetUID(c)
-	if !ok {
+	_, UID, Token := GetUserByQuery(c)
+	if ExprCTX(UID == "", c, 1, "参数获取失败") {
 		return
 	}
 
-	if _, ok := GetToken(c, RandomToken[UID][0]); !ok {
+	if ExprCTX(RandomToken[UID][0] == "", c, 2, "请先获取随机密钥") {
+		return
+	}
+
+	if ExprCTX(Token != RandomToken[UID][0], c, 3, "你不是该用户！") {
 		return
 	}
 
@@ -123,23 +124,16 @@ func Register(c *gin.Context) {
 		log.Infof("%v(%v): %v", r.Member.Uname, r.Member.Mid, r.Content.Message)
 		if r.Content.Message == RandomToken[UID][1] {
 			TokenCorrect = true
+			break
 		}
 	}
 
-	if !TokenCorrect {
-		c.JSON(400, gin.H{
-			"code": 2,
-			"data": "Token 验证失败",
-		})
+	if ExprCTX(!TokenCorrect, c, 4, "Token 验证失败") {
 		return
 	}
 
 	NumberUID, err := strconv.ParseInt(UID, 10, 64)
-	if err != nil {
-		c.JSON(400, gin.H{
-			"code": 3,
-			"data": err.Error(),
-		})
+	if ErrorCTX(err, c, 5) {
 		return
 	}
 
@@ -153,11 +147,7 @@ func Register(c *gin.Context) {
 	}
 
 	newUser, err := NewUserByUID(NumberUID)
-	if err != nil {
-		c.JSON(400, gin.H{
-			"code": 4,
-			"data": err.Error(),
-		})
+	if ErrorCTX(err, c, 4) {
 		return
 	}
 
@@ -169,110 +159,85 @@ func Register(c *gin.Context) {
 
 // 随机生成验证用 Token
 func GetRandomToken(c *gin.Context) {
-	if UID, ok := GetUID(c); ok {
-		// 一个用来确定后续请求为同一个人发送 一个用来验证b站UID
-		rand.Seed(time.Now().UnixNano())
-		size := 100000
-		num := (rand.Intn(9)+1)*size + rand.Intn(size)
-		RandomToken[UID] = [2]string{uuid.NewV4().String(), strconv.Itoa(num)}
-		c.JSON(200, gin.H{
-			"code": 0,
-			"data": RandomToken[UID],
-		})
+	_, UID, _ := GetUserByQuery(c)
+	if ExprCTX(UID == "", c, 1, "参数获取失败") {
+		return
 	}
+
+	// 一个用来确定后续请求为同一个人发送 一个用来验证b站UID
+	rand.Seed(time.Now().UnixNano())
+	size := 100000
+	num := (rand.Intn(9)+1)*size + rand.Intn(size)
+	RandomToken[UID] = [2]string{uuid.NewV4().String(), strconv.Itoa(num)}
+	c.JSON(200, gin.H{
+		"code": 0,
+		"data": RandomToken[UID],
+	})
 }
 
 // 登录前置
-func BeforeLogin(c *gin.Context) (*User, int) {
-	if UID, ok := GetUID(c); ok {
-		if Token, ok := GetToken(c, ""); ok {
-			uid, err := strconv.ParseInt(UID, 10, 64)
-			if !printErr(err) {
-				return nil, 2
-			}
-
-			user := GetUserByKey("uid", uid)
-			if user.Uid == 0 {
-				return nil, 3
-			}
-
-			if user.Token != Token {
-				return nil, 4
-			}
-
-			return &user, 0
-		}
+func BeforeLogin(c *gin.Context) *User {
+	uid, UID, Token := GetUserByQuery(c)
+	if ExprCTX(UID == "" || Token == "", c, 1, "参数获取失败") {
+		return nil
 	}
-	return nil, 1
+
+	user := GetUserByKey("uid", uid)
+
+	if ExprCTX(user.Uid == 0, c, 2, "账号不存在") {
+		return nil
+	}
+
+	if ExprCTX(user.Token != Token, c, 3, "Token 不正确") {
+		return nil
+	}
+
+	return &user
 }
 
 // 登录
 func Login(c *gin.Context) {
-	user, err := BeforeLogin(c)
-	switch err {
-	case 0:
-		if user.Uid == 188888131 {
-			c.JSON(200, gin.H{
-				"code": 0,
-				"data": filter.OmitMarshal("login", GetAllUsers()).Interface(),
-			})
-		} else {
-			c.JSON(200, gin.H{
-				"code": 0,
-				"data": filter.OmitMarshal("login", []User{*user}).Interface(),
-			})
-		}
-
-	case 2:
-		c.JSON(400, gin.H{
-			"code": 2,
-			"data": "UID 输入错误",
-		})
-	case 3:
-		c.JSON(400, gin.H{
-			"code": 3,
-			"data": "账号不存在",
-		})
-	case 4:
+	user := BeforeLogin(c)
+	if user == nil {
+		return
+	}
+	if user.Uid == 188888131 {
 		c.JSON(200, gin.H{
-			"code": 4,
-			"data": "Token 不正确",
+			"code": 0,
+			"data": filter.OmitMarshal("login", GetAllUsers()).Interface(),
+		})
+	} else {
+		c.JSON(200, gin.H{
+			"code": 0,
+			"data": filter.OmitMarshal("login", []User{*user}).Interface(),
 		})
 	}
 }
 
 // 修改用户信息
 func Modify(c *gin.Context) {
-	user, err := BeforeLogin(c)
-	switch err {
-	case 0:
+	user := BeforeLogin(c)
+	if user != nil {
 		var other User
 		err := c.Bind(&other)
-		if err != nil {
-			c.JSON(200, gin.H{
-				"code": 2,
-				"data": "获取修改数据失败",
-			})
+		if ErrorCTX(err, c, 2) {
 			return
 		}
-		if other.Uid == user.Uid || user.Uid == 188888131 {
-			// 普通用户只允许修改这两项
-			other.Update("url", other.Url)
-			other.Update("watch", strings.Join(other.Watch, ","))
-			if user.Uid == 188888131 {
-				other.Update("level", other.Level)
-				other.Update("xp", other.XP)
-			}
-			c.JSON(200, gin.H{
-				"code": 0,
-				"data": filter.OmitMarshal("login", GetUserByKey("uid", other.Uid)).Interface(),
-			})
-		} else {
-			c.JSON(200, gin.H{
-				"code": 3,
-				"data": "不能修改别人信息哦",
-			})
+		if ExprCTX(other.Uid != user.Uid && user.Uid != 188888131, c, 3, "不能修改别人信息哦") {
+			return
 		}
+
+		// 普通用户只允许修改这两项
+		other.Update("url", other.Url)
+		other.Update("watch", strings.Join(other.Watch, ","))
+		if user.Uid == 188888131 {
+			other.Update("level", other.Level)
+			other.Update("xp", other.XP)
+		}
+		c.JSON(200, gin.H{
+			"code": 0,
+			"data": filter.OmitMarshal("login", GetUserByKey("uid", other.Uid)).Interface(),
+		})
 	}
 }
 
