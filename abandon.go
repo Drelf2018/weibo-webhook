@@ -87,6 +87,7 @@ func UpdatePost(c *gin.Context) {
 	}
 
 	var post Post
+	post.Comments = []*Post{}
 	err := c.Bind(&post)
 	if ErrorCTX(err, c, 3) {
 		log.Errorf("用户 %v 提交失败: %v", user.Uid, err.Error())
@@ -301,6 +302,21 @@ func Run(addr ...string) {
 	// 参考 https://blog.csdn.net/kilmerfun/article/details/123943070 https://blog.csdn.net/weixin_52690231/article/details/124109518
 	r.GET("url/*u", func(c *gin.Context) {
 		c.File(Download(c.Param("u")[1:]))
+	})
+
+	// 更新在线状态
+	r.GET("online", func(c *gin.Context) {
+		_, _, Token := GetUserByQuery(c)
+		user := GetUserByKey("token", Token)
+		if ExprCTX(user.Token != Token, c, 1, "Token 验证失败") {
+			return
+		}
+		timeNow := time.Now().Unix()
+		UpdateTime[user.Uid] = timeNow
+		c.JSON(200, gin.H{
+			"code": 0,
+			"data": timeNow,
+		})
 	})
 
 	r.GET("login", Login)

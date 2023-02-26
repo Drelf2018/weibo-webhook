@@ -104,27 +104,39 @@ func (post *Post) Insert() string {
 	for _, url := range post.PicUrls {
 		go Download(url)
 	}
-	_, err := PostStmt.Exec(
-		post.Mid,
-		post.Time,
-		post.Text,
-		post.Type,
-		post.Source,
-		post.Uid,
-		post.Name,
-		post.Face,
-		post.Pendant,
-		post.Description,
-		post.Follower,
-		post.Following,
-		strings.Join(post.Attachment, ","),
-		strings.Join(post.PicUrls, ","),
-		post.Repost.Insert(),
-	)
-	if !printErr(err) {
-		return ""
+	repostID := post.Repost.Insert()
+	mids := ForEach(func(rows *sql.Rows) (mid string) {
+		rows.Scan(&mid)
+		return
+	}, "SELECT mid from posts where mid=$1 and type=$2", post.Mid, post.Type)
+	if len(mids) == 0 {
+		if _, err := PostStmt.Exec(
+			post.Mid,
+			post.Time,
+			post.Text,
+			post.Type,
+			post.Source,
+			post.Uid,
+			post.Name,
+			post.Face,
+			post.Pendant,
+			post.Description,
+			post.Follower,
+			post.Following,
+			strings.Join(post.Attachment, ","),
+			strings.Join(post.PicUrls, ","),
+			repostID,
+		); !printErr(err) {
+			return ""
+		}
+
+		if post.Type != "weiboComment" {
+			SavedPosts.PushSort(*post)
+		} else {
+			SavedPosts.PushComment(repostID, *post)
+		}
 	}
-	SavedPosts.PushSort(*post)
+
 	return post.Type + post.Mid
 }
 
@@ -214,10 +226,18 @@ func GetAllPost(pl *PostList) {
 			} else {
 				post.Attachment = strings.Split(Attachment, ",")
 			}
-			// 添加转发的微博
-			post.Repost = pl.GetPostByName(repostID)
-			// 插入并排序
-			pl.PushSort(post)
+			post.Comments = []*Post{}
+			if post.Type != "weiboComment" {
+				if post.Mid == "4867342846135211" {
+					log.Info(post)
+				}
+				// 添加转发的微博
+				post.Repost = pl.GetPostByName(repostID)
+				// 插入并排序
+				pl.PushSort(post)
+			} else {
+				pl.PushComment(repostID, post)
+			}
 		}
 		return
 	}, "select * from posts order by time")

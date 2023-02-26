@@ -28,6 +28,7 @@ type Post struct {
 	Attachment []string `form:"attachment" json:"attachment"`
 	PicUrls    []string `form:"picUrls" json:"picUrls"`
 	Repost     *Post    `form:"repost" json:"repost"`
+	Comments   []*Post  `json:"comments"`
 }
 
 type PostList struct {
@@ -70,6 +71,38 @@ func (pl *PostList) PushBottom(post Post) {
 func (pl *PostList) PushSort(post Post) {
 	pl.PushBottom(post)
 	sort.Sort(pl)
+}
+
+// 不重复插入评论
+func SetComments(Comments *[]*Post, post *Post) {
+	for _, comment := range *Comments {
+		if comment.Mid == post.Mid {
+			return
+		}
+	}
+	post.Repost = nil
+	*Comments = append(*Comments, post)
+}
+
+// 插入评论
+func (pl *PostList) PushComment(repostID string, post Post) {
+	log.Info(repostID, post.Text)
+	root := pl.GetPostByName(post.Attachment[0])
+	if root == nil {
+		return
+	}
+	if repostID == "" {
+		SetComments(&root.Comments, &post)
+	} else {
+		commentList := root.Comments
+		for i := 0; i < len(commentList); i++ {
+			if repostID == post.Type+commentList[i].Mid {
+				SetComments(&commentList[i].Comments, &post)
+				break
+			}
+			commentList = append(commentList, commentList[i].Comments...)
+		}
+	}
 }
 
 // 根据名称返回博文
