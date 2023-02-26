@@ -86,7 +86,6 @@ func SetComments(Comments *[]*Post, post *Post) {
 
 // 插入评论
 func (pl *PostList) PushComment(repostID string, post Post) {
-	log.Info(repostID, post.Text)
 	root := pl.GetPostByName(post.Attachment[0])
 	if root == nil {
 		return

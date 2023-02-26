@@ -228,9 +228,6 @@ func GetAllPost(pl *PostList) {
 			}
 			post.Comments = []*Post{}
 			if post.Type != "weiboComment" {
-				if post.Mid == "4867342846135211" {
-					log.Info(post)
-				}
 				// 添加转发的微博
 				post.Repost = pl.GetPostByName(repostID)
 				// 插入并排序
