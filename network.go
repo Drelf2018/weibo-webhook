@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -61,23 +62,71 @@ func Download(url string) (local string) {
 	return
 }
 
+// 替换
+func ReplaceData(text string, post *Post) string {
+	return strings.NewReplacer(
+		"{mid}", post.Mid,
+		"{time}", fmt.Sprint(post.Time),
+		"{text}", post.Text,
+		"{type}", post.Type,
+		"{source}", post.Source,
+		"{uid}", post.Uid,
+		"{name}", post.Name,
+		"{face}", post.Face,
+		"{pendant}", post.Pendant,
+		"{description}", post.Description,
+		"{follower}", post.Follower,
+		"{following}", post.Following,
+		"{picUrls}", strings.Join(post.PicUrls, ","),
+	).Replace(text)
+}
+
+// 发送请求
+func RequestUser(job Job) {
+	dataByte, err := json.Marshal(job.Data)
+	if !printErr(err) {
+		return
+	}
+	bodyReader := bytes.NewReader(dataByte)
+
+	client := &http.Client{}
+	req, _ := http.NewRequest(job.Method, job.Url, bodyReader)
+
+	//添加请求头
+	for k, v := range job.Headers {
+		req.Header.Add(k, v)
+	}
+
+	resp, err := client.Do(req)
+	if printErr(err) {
+		body, err := ioutil.ReadAll(resp.Body)
+		if printErr(err) {
+			log.Infof("成功向用户 %v 发送请求 %v", job.Url, string(body))
+		}
+	}
+	defer resp.Body.Close()
+}
+
 // 将 Post 信息 Post 给用户 什么双关
 func Webhook(post *Post) {
-	dataByte, err := json.Marshal(post)
-	if printErr(err) {
-		bodyReader := bytes.NewReader(dataByte)
-		for _, url := range GetUrlsByWatch(post.Type + post.Uid) {
-			if url == "" {
+	pid := post.Type + post.Uid
+	pname := post.Type + post.Mid
+	for _, user := range GetAllUsers() {
+		if user.File == "" {
+			continue
+		}
+		jobs := GetJobsByUser(user.File, pid)
+		for _, job := range jobs {
+			matched, err := regexp.MatchString(job.Patten, pname)
+			if !printErr(err) || !matched {
 				continue
 			}
-			resp, err := http.Post(url, "application/json;charset=utf-8", bodyReader)
-			if printErr(err) {
-				body, err := ioutil.ReadAll(resp.Body)
-				if printErr(err) {
-					log.Infof("成功向用户 %v 发送请求 %v", url, string(body))
-				}
+
+			for k, v := range job.Data {
+				job.Data[k] = ReplaceData(v, post)
 			}
-			defer resp.Body.Close()
+
+			RequestUser(job)
 		}
 	}
 }

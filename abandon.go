@@ -3,13 +3,14 @@ package webhook
 import (
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/liu-cn/json-filter/filter"
 	uuid "github.com/satori/go.uuid"
+	"gopkg.in/yaml.v2"
 )
 
 func ExprCTX(expr bool, c *gin.Context, code int, msg string) bool {
@@ -228,10 +229,8 @@ func Modify(c *gin.Context) {
 			return
 		}
 
-		// 普通用户只允许修改这两项
-		other.Update("url", other.Url)
-		other.Update("watch", strings.Join(other.Watch, ","))
-		if user.Uid == 188888131 {
+		// 普通用户不让改
+		if user.Level <= 1 {
 			other.Update("level", other.Level)
 			other.Update("xp", other.XP)
 		}
@@ -240,6 +239,34 @@ func Modify(c *gin.Context) {
 			"data": filter.OmitMarshal("login", GetUserByKey("uid", other.Uid)).Interface(),
 		})
 	}
+}
+
+// 更新配置文件
+func UpdateConfig(c *gin.Context) {
+	_, _, Token := GetUserByQuery(c)
+	user := GetUserByKey("token", Token)
+
+	var yml Yml
+	err := c.Bind(&yml)
+	if ErrorCTX(err, c, 2) {
+		return
+	}
+
+	filename := "/" + uuid.NewV4().String() + ".yml"
+
+	file, err := os.Create(ymlFolder + filename)
+	panicErr(err)
+	defer file.Close()
+
+	enc := yaml.NewEncoder(file)
+	panicErr(enc.Encode(yml))
+
+	user.Update("file", ymlFolder+filename)
+
+	c.JSON(200, gin.H{
+		"code": 0,
+		"data": filename,
+	})
 }
 
 func Cors() gin.HandlerFunc {
@@ -265,6 +292,7 @@ func Cors() gin.HandlerFunc {
 var cfg Config
 
 // 资源文件夹
+var ymlFolder = "./config"
 var imageFolder = "./image"
 
 // 更新博文的时间
@@ -283,6 +311,7 @@ func init() {
 	GetReplies = GetRequest(cfg.Oid)
 
 	// 初始化文件夹
+	MakeDir(ymlFolder)
 	MakeDir(imageFolder)
 }
 
@@ -326,6 +355,7 @@ func Run(addr ...string) {
 
 	r.POST("modify", Modify)
 	r.POST("update", UpdatePost)
+	r.POST("config", UpdateConfig)
 
 	r.Run(addr...) // listen and serve on 0.0.0.0:8080
 }

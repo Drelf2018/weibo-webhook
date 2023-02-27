@@ -26,5 +26,8 @@ go.work
 # Image
 /image
 
+# Config
+/config
+
 # Pycache
 __pycache__

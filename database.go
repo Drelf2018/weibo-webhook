@@ -16,12 +16,11 @@ var db *sql.DB
 var PostStmt *sql.Stmt
 
 type User struct {
-	Uid   int64    `form:"uid" json:"uid"`
-	Token string   `json:"token,omit($any)"`
-	Level int64    `form:"level" json:"level"`
-	XP    int64    `form:"xp" json:"xp"`
-	Watch []string `form:"watch" json:"watch"`
-	Url   string   `form:"url" json:"url"`
+	Uid   int64  `form:"uid" json:"uid"`
+	Token string `json:"token,omit($any)"`
+	Level int64  `form:"level" json:"level"`
+	XP    int64  `form:"xp" json:"xp"`
+	File  string `form:"file" json:"file"`
 }
 
 // 打开数据库并验证
@@ -80,8 +79,7 @@ func init() {
 		token text,
 		level bigint,
 		xp bigint,
-		watch text,
-		url text
+		file text
 	)`)
 	panicErr(err)
 
@@ -142,9 +140,9 @@ func (post *Post) Insert() string {
 
 // 向数据库插入一位用户。
 func (user User) Insert() (sql.Result, error) {
-	stmt, err := db.Prepare("INSERT INTO users(uid,token,level,xp,watch,url) VALUES($1,$2,$3,$4,$5,$6)")
+	stmt, err := db.Prepare("INSERT INTO users(uid,token,level,xp,file) VALUES($1,$2,$3,$4,$5)")
 	panicErr(err)
-	return stmt.Exec(user.Uid, user.Token, user.Level, user.XP, strings.Join(user.Watch, ","), user.Url)
+	return stmt.Exec(user.Uid, user.Token, user.Level, user.XP, user.File)
 }
 
 // 更新用户数据
@@ -159,7 +157,7 @@ func (user User) Update(key, value any) (sql.Result, error) {
 
 // 新建用户
 func NewUserByUID(uid int64) (user *User, err error) {
-	user = &User{uid, uuid.NewV4().String(), 5, 0, []string{}, ""}
+	user = &User{uid, uuid.NewV4().String(), 5, 0, ""}
 	_, err = user.Insert()
 	return
 }
@@ -167,9 +165,7 @@ func NewUserByUID(uid int64) (user *User, err error) {
 // 根据 Key 返回 User 对象
 func GetUserByKey(key string, val any) (user User) {
 	users := ForEach(func(rows *sql.Rows) (user User) {
-		var watch string
-		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &watch, &user.Url)
-		user.Watch = strings.Split(watch, ",")
+		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &user.File)
 		return
 	}, "select * from users where "+key+"=$1", val)
 	if len(users) > 0 {
@@ -181,18 +177,14 @@ func GetUserByKey(key string, val any) (user User) {
 // 返回所有 User 对象
 func GetAllUsers() []User {
 	return ForEach(func(rows *sql.Rows) (user User) {
-		var watch string
-		err := rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &watch, &user.Url)
-		if panicErr(err) {
-			user.Watch = strings.Split(watch, ",")
-		}
+		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &user.File)
 		return
 	}, "select * from users")
 }
 
 // 返回数据库中所有博文。
-func GetAllPost(pl *PostList) {
-	ForEach(func(rows *sql.Rows) (post Post) {
+func GetAllPost(pl *PostList) []Post {
+	return ForEach(func(rows *sql.Rows) (post Post) {
 		var Attachment, PicUrls, repostID string
 		err := rows.Scan(
 			&post.Mid,
@@ -227,6 +219,9 @@ func GetAllPost(pl *PostList) {
 				post.Attachment = strings.Split(Attachment, ",")
 			}
 			post.Comments = []*Post{}
+			if pl == nil {
+				return
+			}
 			if post.Type != "weiboComment" {
 				// 添加转发的微博
 				post.Repost = pl.GetPostByName(repostID)
