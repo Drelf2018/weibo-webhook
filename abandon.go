@@ -261,7 +261,7 @@ func UpdateConfig(c *gin.Context) {
 	enc := yaml.NewEncoder(file)
 	panicErr(enc.Encode(yml))
 
-	user.Update("file", ymlFolder+filename)
+	user.Update("file", filename)
 
 	c.JSON(200, gin.H{
 		"code": 0,
@@ -324,6 +324,7 @@ func Run(addr ...string) {
 	// 跨域设置
 	r.Use(Cors())
 
+	r.Static("yml", ymlFolder)
 	r.Static("image", imageFolder)
 	r.StaticFile("favicon.ico", imageFolder+"/favicon.ico")
 

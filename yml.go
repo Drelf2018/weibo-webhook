@@ -7,16 +7,16 @@ import (
 )
 
 type Job struct {
-	Patten  string            `yaml:"patten"`
-	Method  string            `yaml:"method"`
-	Url     string            `yaml:"url"`
-	Headers map[string]string `yaml:"header"`
-	Data    map[string]string `yaml:"data"`
+	Patten  string            `form:"patten" yaml:"patten"`
+	Method  string            `form:"method" yaml:"method"`
+	Url     string            `form:"url" yaml:"url"`
+	Headers map[string]string `form:"headers" yaml:"headers"`
+	Data    map[string]string `form:"data" yaml:"data"`
 }
 
 type Yml struct {
-	Listening []string `yaml:"listening"`
-	Jobs      []Job    `yaml:"jobs"`
+	Listening []string `form:"listening" yaml:"listening"`
+	Jobs      []Job    `form:"jobs" yaml:"jobs"`
 }
 
 func GetYmlByUser(filepath string) (config Yml) {
@@ -28,7 +28,7 @@ func GetYmlByUser(filepath string) (config Yml) {
 }
 
 func GetJobsByUser(filepath, pid string) []Job {
-	yml := GetYmlByUser(filepath)
+	yml := GetYmlByUser(ymlFolder + filepath)
 	for _, id := range yml.Listening {
 		if id == pid {
 			return yml.Jobs
