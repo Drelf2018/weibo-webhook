@@ -88,7 +88,6 @@ func UpdatePost(c *gin.Context) {
 	}
 
 	var post Post
-	post.Comments = []*Post{}
 	err := c.Bind(&post)
 	if ErrorCTX(err, c, 3) {
 		log.Errorf("用户 %v 提交失败: %v", user.Uid, err.Error())

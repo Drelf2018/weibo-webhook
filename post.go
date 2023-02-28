@@ -180,6 +180,9 @@ func (post *Post) Empty() {
 	if post.Attachment == nil {
 		post.Attachment = []string{}
 	}
+	if post.Comments == nil {
+		post.Comments = []*Post{}
+	}
 	if post.Repost == nil {
 		return
 	}
