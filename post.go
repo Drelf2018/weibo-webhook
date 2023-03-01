@@ -1,7 +1,9 @@
 package webhook
 
 import (
+	"database/sql"
 	"sort"
+	"strings"
 )
 
 // 一条博文包含的信息
@@ -29,6 +31,15 @@ type Post struct {
 	PicUrls    []string `form:"picUrls" json:"picUrls"`
 	Repost     *Post    `form:"repost" json:"repost"`
 	Comments   []*Post  `json:"comments"`
+}
+
+// 判断是否在数据库
+func (post Post) Saved() bool {
+	mids := ForEach(func(rows *sql.Rows) (mid string) {
+		rows.Scan(&mid)
+		return
+	}, "SELECT mid from posts where mid=$1 and type=$2", post.Mid, post.Type)
+	return len(mids) != 0
 }
 
 // 去除空的子博文 Repost
@@ -78,49 +89,66 @@ func (post *Post) Save(user *User) (int64, string) {
 
 	if !ok {
 		monitor = PostMonitor{1 / float64(user.Level), []*Post{post}, []*User{user}, []float64{0}}
-	} else if !In(user, &monitor) {
-		// 检测提交的文本与检查器中储存的文本的相似性
-		maxPercent := 0.0
-		totPercent := 0.0
-		for i, p := range monitor.Posts {
-			percent := SimilarText(p.Text, post.Text)
-			if percent > maxPercent {
-				maxPercent = percent
-			}
-			totPercent += percent
-			monitor.Percent[i] += percent
-		}
-		// 更新可信度得分
-		// 假如相似度为 100% 那得分只与 level 有关
-		// 即一个 level 1 提交即可超过阈值而至少需要五个 level 5 提交才能超过
-		monitor.Score += maxPercent / float64(user.Level)
-		monitor.Posts = append(monitor.Posts, post)
-		monitor.Users = append(monitor.Users, user)
-		monitor.Percent = append(monitor.Percent, totPercent)
+	} else if !monitor.In(user) {
+		(&monitor).Parse(post, user)
 	} else {
 		return 3, "您已提交过"
 	}
 
-	// 得分超过阈值，插入数据库
-	if monitor.Score >= 1 {
-		// 插入相似度最高的
-		MaxID, i, total := 0, 0, monitor.Len()
-		for i < total {
-			p := monitor.Percent[i]
-			AnyTo(p > monitor.Percent[MaxID], &MaxID, i)
-			monitor.Users[i].Update("xp", monitor.Users[i].XP+int64(10*(p+1)/float64(total)))
-			i += 1
-		}
-
-		// 发布最终确定的消息并插入数据库
-		FinalPost := monitor.Posts[MaxID]
-		go Webhook(FinalPost)
-		FinalPost.Insert()
-
+	if finalPost := monitor.GetPost(); finalPost != nil {
+		// 推送
+		go Webhook(finalPost)
+		// 插入
+		finalPost.Insert()
 		// 清理占用
-		delete(Monitors, FinalPost.Type+FinalPost.Mid)
+		delete(Monitors, finalPost.Type+finalPost.Mid)
 	}
 	return 0, "提交成功"
+}
+
+// 插入接收到的数据，包含被转发微博
+//
+// 我超好巧妙的递归储存
+func (post *Post) Insert() string {
+	if post == nil || post.Mid == "" {
+		return ""
+	}
+	// 下个图先
+	go DownloadAll(post.PicUrls, post.Face, post.Pendant)
+	// 先把儿子插进去先
+	repostID := post.Repost.Insert()
+	// 看下自己在不在数据库 用来判断评论重复的
+	if post.Saved() {
+		return post.Type + post.Mid
+	}
+
+	if _, err := PostStmt.Exec(
+		post.Mid,
+		post.Time,
+		post.Text,
+		post.Type,
+		post.Source,
+		post.Uid,
+		post.Name,
+		post.Face,
+		post.Pendant,
+		post.Description,
+		post.Follower,
+		post.Following,
+		strings.Join(post.Attachment, ","),
+		strings.Join(post.PicUrls, ","),
+		repostID,
+	); !printErr(err) {
+		return ""
+	}
+
+	if post.Type != "weiboComment" {
+		SavedPosts.PushSort(*post)
+	} else {
+		SavedPosts.PushComment(repostID, *post)
+	}
+
+	return post.Type + post.Mid
 }
 
 type PostList struct {
@@ -226,39 +254,60 @@ func (pl *PostList) GetPostByTime(BeginTime, EndTime int64) []Post {
 	return pl.Posts[index:end]
 }
 
-// 博文检查器
-type PostMonitor struct {
-	Score   float64
-	Posts   []*Post
-	Users   []*User
-	Percent []float64
-}
+// 返回数据库中所有博文。
+func GetAllPost(pl *PostList) []Post {
+	return ForEach(func(rows *sql.Rows) (post Post) {
+		var Attachment, PicUrls, repostID string
+		err := rows.Scan(
+			&post.Mid,
+			&post.Time,
+			&post.Text,
+			&post.Type,
+			&post.Source,
 
-func (pm PostMonitor) Len() int {
-	return len(pm.Users)
-}
+			&post.Uid,
+			&post.Name,
+			&post.Face,
+			&post.Pendant,
+			&post.Description,
 
-func (pm PostMonitor) Swap(i, j int) {
-	pm.Posts[i], pm.Posts[j] = pm.Posts[j], pm.Posts[i]
-	pm.Users[i], pm.Users[j] = pm.Users[j], pm.Users[i]
-	pm.Percent[i], pm.Percent[j] = pm.Percent[j], pm.Percent[i]
-}
+			&post.Follower,
+			&post.Following,
 
-func (pm PostMonitor) Less(i, j int) bool {
-	return pm.Users[i].Uid < pm.Users[j].Uid
-}
-
-// 判断用户是否已经提交
-//
-// 参考 https://blog.csdn.net/weixin_42282999/article/details/108542734
-func In(user *User, pm *PostMonitor) bool {
-	sort.Sort(pm)
-	index := sort.Search(pm.Len(), func(i int) bool { return pm.Users[i].Uid == user.Uid })
-	return index < pm.Len()
+			&Attachment,
+			&PicUrls,
+			&repostID,
+		)
+		if printErr(err) {
+			// 分割图片和附件
+			if PicUrls == "" {
+				post.PicUrls = []string{}
+			} else {
+				post.PicUrls = strings.Split(PicUrls, ",")
+			}
+			if Attachment == "" {
+				post.Attachment = []string{}
+			} else {
+				post.Attachment = strings.Split(Attachment, ",")
+			}
+			post.Comments = []*Post{}
+			if pl == nil {
+				return
+			}
+			if post.Type != "weiboComment" {
+				// 添加转发的微博
+				post.Repost = pl.GetPostByName(repostID)
+				// 插入并排序
+				pl.PushSort(post)
+			} else {
+				pl.PushComment(repostID, post)
+			}
+		}
+		return
+	}, "select * from posts order by time")
 }
 
 var SavedPosts = PostList{0, 0, []Post{}, make(map[string]int)}
-var Monitors = make(map[string]PostMonitor)
 
 func init() {
 	GetAllPost(&SavedPosts)

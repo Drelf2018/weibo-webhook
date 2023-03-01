@@ -253,8 +253,7 @@ func UpdateConfig(c *gin.Context) {
 
 	filename := "/" + uuid.NewV4().String() + ".yml"
 
-	file, err := os.Create(ymlFolder + filename)
-	panicErr(err)
+	file := panicSecond(os.Create(ymlFolder + filename))
 	defer file.Close()
 
 	enc := yaml.NewEncoder(file)

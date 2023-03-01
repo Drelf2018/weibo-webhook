@@ -46,12 +46,19 @@ func AnyTo[T any](Expr bool, Pointer *T, Value T) {
 	}
 }
 
+// 简易的 panic
 func panicErr(err error) bool {
 	if err != nil {
 		panic(err)
 	} else {
 		return true
 	}
+}
+
+// 判断第二个变量
+func panicSecond[T any](res T, err error) T {
+	panicErr(err)
+	return res
 }
 
 // 如果出错则打印错误并返回 false 否则返回 true

@@ -47,19 +47,22 @@ func Download(url string) (local string) {
 		return
 	}
 
-	resp, err := http.Get(url)
-	panicErr(err)
+	resp := panicSecond(http.Get(url))
 	defer resp.Body.Close()
 
-	file, err := os.Create(local)
-	panicErr(err)
+	file := panicSecond(os.Create(local))
 	defer file.Close()
 
-	_, err = io.Copy(file, resp.Body)
-	panicErr(err)
+	panicSecond(io.Copy(file, resp.Body))
 
 	log.Infof("图片 %v 下载完成", url)
 	return
+}
+
+func DownloadAll(urls []string, url ...string) {
+	for _, u := range append(urls, url...) {
+		go Download(u)
+	}
 }
 
 // 替换
@@ -126,7 +129,7 @@ func Webhook(post *Post) {
 				job.Data[k] = ReplaceData(v, post)
 			}
 
-			RequestUser(job)
+			go RequestUser(job)
 		}
 	}
 }
