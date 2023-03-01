@@ -147,36 +147,30 @@ type Replies struct {
 }
 
 // 返回最近回复
-var GetReplies func() []Replies
-
-func GetRequest(oid int64) func() []Replies {
+func GetReplies() []Replies {
 	BaseURL := "https://aliyun.nana7mi.link/comment.get_comments(%v,type,1:int).replies"
 	QueryVar := "?var=type<-comment.CommentResourceType.DYNAMIC"
-	req, _ := http.NewRequest("GET", fmt.Sprintf(BaseURL, oid)+QueryVar, nil)
 
-	return func() []Replies {
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if !printErr(err) {
-			return nil
-		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		defer resp.Body.Close()
-		if !printErr(err) {
-			return nil
-		}
-
-		var Api ApiData
-		err = json.Unmarshal(body, &Api)
-		if !printErr(err) {
-			return nil
-		}
-
-		if Api.Code != 0 {
-			return nil
-		}
-
-		return Api.Data
+	resp, err := http.Get(fmt.Sprintf(BaseURL, cfg.Oid) + QueryVar)
+	if !printErr(err) {
+		return nil
 	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	if !printErr(err) {
+		return nil
+	}
+
+	var Api ApiData
+	err = json.Unmarshal(body, &Api)
+	if !printErr(err) {
+		return nil
+	}
+
+	if Api.Code != 0 {
+		return nil
+	}
+
+	return Api.Data
 }

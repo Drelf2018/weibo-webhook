@@ -13,7 +13,7 @@ import (
 )
 
 var db *sql.DB
-var PostStmt *sql.Stmt
+var PostStmt, UserStmt *sql.Stmt
 
 type User struct {
 	Uid   int64  `form:"uid" json:"uid"`
@@ -27,19 +27,9 @@ type User struct {
 //
 // 参考 http://events.jianshu.io/p/86753f1e5585
 func init() {
-	// 不同数据库的位置查找语法
-	GetUrlsByWatch = ToGetUrlsByWatch(Any(
-		cfg.isSQLite(),
-		func(watch string) string {
-			return "select url from users where watch Like '%" + watch + "%'"
-		},
-		func(watch string) string {
-			return "select url from users where position(" + watch + " in watch) > 0"
-		},
-	))
 	// 使用sql.Open()创建一个空连接池
 	var err error
-	db, err = sql.Open(cfg.DriverName, Any(cfg.isSQLite(), "./sqlite3.db", cfg.Key()))
+	db, err = sql.Open(cfg.GetDriver())
 	panicErr(err)
 
 	//创建一个具有5秒超时期限的上下文。
@@ -47,8 +37,7 @@ func init() {
 	defer cancel()
 
 	//使用PingContext()建立到数据库的新连接，并传入上下文信息，连接超时就返回
-	err = db.PingContext(ctx)
-	panicErr(err)
+	panicErr(db.PingContext(ctx))
 
 	// 初始化表 不存在则新建
 	_, err = db.Exec(`
@@ -87,6 +76,9 @@ func init() {
 		INSERT INTO posts(mid,time,text,type,source,uid,name,face,pendant,description,follower,following,attachment,picUrls,repost)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 	`)
+	panicErr(err)
+
+	UserStmt, err = db.Prepare("INSERT INTO users(uid,token,level,xp,file) VALUES($1,$2,$3,$4,$5)")
 	panicErr(err)
 }
 
@@ -140,9 +132,7 @@ func (post *Post) Insert() string {
 
 // 向数据库插入一位用户。
 func (user User) Insert() (sql.Result, error) {
-	stmt, err := db.Prepare("INSERT INTO users(uid,token,level,xp,file) VALUES($1,$2,$3,$4,$5)")
-	panicErr(err)
-	return stmt.Exec(user.Uid, user.Token, user.Level, user.XP, user.File)
+	return UserStmt.Exec(user.Uid, user.Token, user.Level, user.XP, user.File)
 }
 
 // 更新用户数据
@@ -233,19 +223,6 @@ func GetAllPost(pl *PostList) []Post {
 		}
 		return
 	}, "select * from posts order by time")
-}
-
-// 根据 watch 返回 url。
-var GetUrlsByWatch func(watch string) (Urls []string)
-
-// 获取 GetUrlsByWatch 函数
-func ToGetUrlsByWatch(cmd func(string) string) func(string) []string {
-	return func(watch string) []string {
-		return ForEach(func(rows *sql.Rows) (url string) {
-			printErr(rows.Scan(&url))
-			return
-		}, cmd(watch))
-	}
 }
 
 // 包装后的查询函数

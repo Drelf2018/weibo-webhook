@@ -302,12 +302,9 @@ var RandomToken = make(map[string][2]string)
 
 func init() {
 	// 从命令行读取数据库连接参数
-	cfg.Pasre()
-	// 定义读取评论的函数
-	if cfg.Oid == -1 {
+	if cfg.Pasre() == -1 {
 		panic("请填写动态oid")
 	}
-	GetReplies = GetRequest(cfg.Oid)
 
 	// 初始化文件夹
 	MakeDir(ymlFolder)
