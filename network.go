@@ -1,12 +1,12 @@
 package webhook
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -86,19 +86,20 @@ func ReplaceData(text string, post *Post) string {
 
 // 发送请求
 func RequestUser(job Job) {
-	dataByte, err := json.Marshal(job.Data)
-	if !printErr(err) {
-		return
+	// 添加参数
+	ploady := make(url.Values)
+	for k, v := range job.Data {
+		ploady.Set(k, v)
 	}
-	bodyReader := bytes.NewReader(dataByte)
 
 	client := &http.Client{}
-	req, _ := http.NewRequest(job.Method, job.Url, bodyReader)
+	req, _ := http.NewRequest(job.Method, job.Url, strings.NewReader(ploady.Encode()))
 
 	//添加请求头
 	for k, v := range job.Headers {
 		req.Header.Add(k, v)
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := client.Do(req)
 	if printErr(err) {
@@ -113,14 +114,13 @@ func RequestUser(job Job) {
 // 将 Post 信息 Post 给用户 什么双关
 func Webhook(post *Post) {
 	pid := post.Type + post.Uid
-	pname := post.Type + post.Mid
 	for _, user := range GetAllUsers() {
 		if user.File == "" {
 			continue
 		}
 		jobs := GetJobsByUser(user.File, pid)
 		for _, job := range jobs {
-			matched, err := regexp.MatchString(job.Patten, pname)
+			matched, err := regexp.MatchString(job.Patten, pid)
 			if !printErr(err) || !matched {
 				continue
 			}
