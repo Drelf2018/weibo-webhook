@@ -33,13 +33,57 @@ type Post struct {
 	Comments   []*Post  `json:"comments"`
 }
 
+// 读取函数
+func (post *Post) ReadRow(row *sql.Rows) {
+	var Attachment, PicUrls, repostID string
+	err := row.Scan(
+		&post.Mid,
+		&post.Time,
+		&post.Text,
+		&post.Type,
+		&post.Source,
+
+		&post.Uid,
+		&post.Name,
+		&post.Face,
+		&post.Pendant,
+		&post.Description,
+
+		&post.Follower,
+		&post.Following,
+
+		&Attachment,
+		&PicUrls,
+		&repostID,
+	)
+	if printErr(err) {
+		// 分割图片和附件
+		if PicUrls == "" {
+			post.PicUrls = []string{}
+		} else {
+			post.PicUrls = strings.Split(PicUrls, ",")
+		}
+		if Attachment == "" {
+			post.Attachment = []string{}
+		} else {
+			post.Attachment = strings.Split(Attachment, ",")
+		}
+		post.Comments = []*Post{}
+
+		if post.Type != "weiboComment" {
+			// 添加转发的微博
+			post.Repost = SavedPosts.GetPostByName(repostID)
+			// 插入并排序
+			SavedPosts.PushSort(*post)
+		} else {
+			SavedPosts.PushComment(repostID, *post)
+		}
+	}
+}
+
 // 判断是否在数据库
-func (post Post) Saved() bool {
-	mids := ForEach(func(rows *sql.Rows) (mid string) {
-		rows.Scan(&mid)
-		return
-	}, "SELECT mid from posts where mid=$1 and type=$2", post.Mid, post.Type)
-	return len(mids) != 0
+func (post *Post) Saved() bool {
+	return !NewQuery("select * from posts where mid=$1 and type=$2", post.Mid, post.Type).ForEach(&Post{}, func() bool { return false })
 }
 
 // 去除空的子博文 Repost
@@ -254,61 +298,8 @@ func (pl *PostList) GetPostByTime(BeginTime, EndTime int64) []Post {
 	return pl.Posts[index:end]
 }
 
-// 返回数据库中所有博文。
-func GetAllPost(pl *PostList) []Post {
-	return ForEach(func(rows *sql.Rows) (post Post) {
-		var Attachment, PicUrls, repostID string
-		err := rows.Scan(
-			&post.Mid,
-			&post.Time,
-			&post.Text,
-			&post.Type,
-			&post.Source,
-
-			&post.Uid,
-			&post.Name,
-			&post.Face,
-			&post.Pendant,
-			&post.Description,
-
-			&post.Follower,
-			&post.Following,
-
-			&Attachment,
-			&PicUrls,
-			&repostID,
-		)
-		if printErr(err) {
-			// 分割图片和附件
-			if PicUrls == "" {
-				post.PicUrls = []string{}
-			} else {
-				post.PicUrls = strings.Split(PicUrls, ",")
-			}
-			if Attachment == "" {
-				post.Attachment = []string{}
-			} else {
-				post.Attachment = strings.Split(Attachment, ",")
-			}
-			post.Comments = []*Post{}
-			if pl == nil {
-				return
-			}
-			if post.Type != "weiboComment" {
-				// 添加转发的微博
-				post.Repost = pl.GetPostByName(repostID)
-				// 插入并排序
-				pl.PushSort(post)
-			} else {
-				pl.PushComment(repostID, post)
-			}
-		}
-		return
-	}, "select * from posts order by time")
-}
-
 var SavedPosts = PostList{0, 0, []Post{}, make(map[string]int)}
 
 func init() {
-	GetAllPost(&SavedPosts)
+	NewQuery("select * from posts order by time").ForEach(&Post{})
 }

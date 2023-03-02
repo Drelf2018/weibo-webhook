@@ -34,20 +34,64 @@ func ErrorCTX(err error, c *gin.Context, code int) bool {
 	return false
 }
 
-func GetUserByQuery(c *gin.Context) (int64, string, string) {
+func GetParams(c *gin.Context) (string, string) {
 	Token, ok := c.GetQuery("token")
 	if !ok {
 		Token = ""
 	}
+
 	UID, ok := c.GetQuery("uid")
 	if !ok {
 		UID = ""
 	}
+
+	return UID, Token
+}
+
+// 简易登录
+func EasyLogin(c *gin.Context) *User {
+	_, Token := GetParams(c)
+	user := GetUser("token", Token)
+	if ExprCTX(user.Token != Token, c, 1, "Token 验证失败") {
+		return nil
+	}
+
+	// ban
+	if user.Level < 0 {
+		return nil
+	}
+
+	return &user
+}
+
+// 严格登录
+func StrictLogin(c *gin.Context) *User {
+	UID, Token := GetParams(c)
+	if ExprCTX(UID == "" || Token == "", c, 1, "参数获取失败") {
+		return nil
+	}
+
 	uid, err := strconv.ParseInt(UID, 10, 64)
 	if err != nil {
 		uid = 0
 	}
-	return uid, UID, Token
+
+	user := GetUser("uid", uid)
+
+	if ExprCTX(user.Uid == 0, c, 2, "账号不存在") {
+		return nil
+	}
+
+	if ExprCTX(user.Token != Token, c, 3, "Token 不正确") {
+		return nil
+	}
+
+	// ban
+	if user.Level < 0 {
+		return nil
+	}
+
+	return &user
 }
 
 // 获取 beginTs 时间之后的所有博文
@@ -79,11 +123,24 @@ func GetPost(c *gin.Context) {
 	})
 }
 
+// 更新在线状态
+func Online(c *gin.Context) {
+	user := EasyLogin(c)
+	if user == nil {
+		return
+	}
+	timeNow := time.Now().Unix()
+	UpdateTime[user.Uid] = timeNow
+	c.JSON(200, gin.H{
+		"code": 0,
+		"data": timeNow,
+	})
+}
+
 // 提交博文
 func UpdatePost(c *gin.Context) {
-	_, _, Token := GetUserByQuery(c)
-	user := GetUserByKey("token", Token)
-	if ExprCTX(user.Token != Token, c, 2, "Token 验证失败") {
+	user := EasyLogin(c)
+	if user == nil {
 		return
 	}
 
@@ -96,7 +153,7 @@ func UpdatePost(c *gin.Context) {
 	post.Empty()
 	UpdateTime[user.Uid] = time.Now().Unix()
 	log.Infof("用户 %v 提交 %v 级博文: %v", user.Uid, user.Level, post.Text)
-	code, msg := post.Save(&user)
+	code, msg := post.Save(user)
 	log.Infof("用户 %v %v", user.Uid, msg)
 	c.JSON(200, gin.H{
 		"code": code,
@@ -106,7 +163,7 @@ func UpdatePost(c *gin.Context) {
 
 // 注册
 func Register(c *gin.Context) {
-	_, UID, Token := GetUserByQuery(c)
+	UID, Token := GetParams(c)
 	if ExprCTX(UID == "", c, 1, "参数获取失败") {
 		return
 	}
@@ -138,7 +195,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	user := GetUserByKey("uid", NumberUID)
+	user := GetUser("uid", NumberUID)
 	if user.Uid != 0 {
 		c.JSON(200, gin.H{
 			"code": 0,
@@ -147,7 +204,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	newUser, err := NewUserByUID(NumberUID)
+	newUser, err := NewUser(NumberUID)
 	if ErrorCTX(err, c, 4) {
 		return
 	}
@@ -160,7 +217,7 @@ func Register(c *gin.Context) {
 
 // 随机生成验证用 Token
 func GetRandomToken(c *gin.Context) {
-	_, UID, _ := GetUserByQuery(c)
+	UID, _ := GetParams(c)
 	if ExprCTX(UID == "", c, 1, "参数获取失败") {
 		return
 	}
@@ -176,74 +233,54 @@ func GetRandomToken(c *gin.Context) {
 	})
 }
 
-// 登录前置
-func BeforeLogin(c *gin.Context) *User {
-	uid, UID, Token := GetUserByQuery(c)
-	if ExprCTX(UID == "" || Token == "", c, 1, "参数获取失败") {
-		return nil
-	}
-
-	user := GetUserByKey("uid", uid)
-
-	if ExprCTX(user.Uid == 0, c, 2, "账号不存在") {
-		return nil
-	}
-
-	if ExprCTX(user.Token != Token, c, 3, "Token 不正确") {
-		return nil
-	}
-
-	return &user
-}
-
 // 登录
 func Login(c *gin.Context) {
-	user := BeforeLogin(c)
+	user := StrictLogin(c)
 	if user == nil {
 		return
 	}
-	if user.Uid == 188888131 {
-		c.JSON(200, gin.H{
-			"code": 0,
-			"data": filter.OmitMarshal("login", GetAllUsers()).Interface(),
-		})
-	} else {
-		c.JSON(200, gin.H{
-			"code": 0,
-			"data": filter.OmitMarshal("login", []User{*user}).Interface(),
-		})
+	users := []User{*user}
+	if user.Level <= 1 {
+		users = GetAllUsers()
 	}
+	c.JSON(200, gin.H{
+		"code": 0,
+		"data": filter.OmitMarshal("login", users).Interface(),
+	})
 }
 
 // 修改用户信息
 func Modify(c *gin.Context) {
-	user := BeforeLogin(c)
-	if user != nil {
-		var other User
-		err := c.Bind(&other)
-		if ErrorCTX(err, c, 2) {
-			return
-		}
-		if ExprCTX(other.Uid != user.Uid && user.Uid != 188888131, c, 3, "不能修改别人信息哦") {
-			return
-		}
-
-		// 普通用户不让改
-		if user.Level <= 1 {
-			other.Update("level", other.Level)
-			other.Update("xp", other.XP)
-		}
-		c.JSON(200, gin.H{
-			"code": 0,
-			"data": filter.OmitMarshal("login", GetUserByKey("uid", other.Uid)).Interface(),
-		})
+	user := StrictLogin(c)
+	if user == nil {
+		return
 	}
+
+	// 普通用户不让改
+	if ExprCTX(user.Level > 1, c, 2, "不能修改别人信息哦") {
+		return
+	}
+
+	var other User
+	err := c.Bind(&other)
+	if ErrorCTX(err, c, 3) {
+		return
+	}
+
+	other.Update("xp", other.XP)
+	other.Update("level", other.Level)
+	c.JSON(200, gin.H{
+		"code": 0,
+		"data": filter.OmitMarshal("modify", GetUser("uid", other.Uid)).Interface(),
+	})
 }
 
 // 更新配置文件
 func UpdateConfig(c *gin.Context) {
-	_, _, Token := GetUserByQuery(c)
-	user := GetUserByKey("token", Token)
+	user := EasyLogin(c)
+	if user == nil {
+		return
+	}
 
 	var yml Yml
 	err := c.Bind(&yml)
@@ -293,7 +330,7 @@ var cfg Config
 var ymlFolder = "./config"
 var imageFolder = "./image"
 
-// 更新博文的时间
+// 博文更新时间
 var UpdateTime = make(map[int64]int64)
 
 // 随机密钥
@@ -325,27 +362,11 @@ func Run(addr ...string) {
 
 	// 解析图片网址并返回文件
 	// 参考 https://blog.csdn.net/kilmerfun/article/details/123943070 https://blog.csdn.net/weixin_52690231/article/details/124109518
-	r.GET("url/*u", func(c *gin.Context) {
-		c.File(Download(c.Param("u")[1:]))
-	})
-
-	// 更新在线状态
-	r.GET("online", func(c *gin.Context) {
-		_, _, Token := GetUserByQuery(c)
-		user := GetUserByKey("token", Token)
-		if ExprCTX(user.Token != Token, c, 1, "Token 验证失败") {
-			return
-		}
-		timeNow := time.Now().Unix()
-		UpdateTime[user.Uid] = timeNow
-		c.JSON(200, gin.H{
-			"code": 0,
-			"data": timeNow,
-		})
-	})
+	r.GET("url/*u", func(c *gin.Context) { c.File(Download(c.Param("u")[1:])) })
 
 	r.GET("login", Login)
 	r.GET("post", GetPost)
+	r.GET("online", Online)
 	r.GET("register", Register)
 	r.GET("token", GetRandomToken)
 

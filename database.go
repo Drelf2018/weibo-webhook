@@ -66,16 +66,38 @@ func init() {
 	UserStmt = panicSecond(db.Prepare("INSERT INTO users(uid,token,level,xp,file) VALUES($1,$2,$3,$4,$5)"))
 }
 
+type Reader interface {
+	ReadRow(*sql.Rows)
+}
+
+type Query struct {
+	sql  string
+	args []any
+}
+
+func NewQuery(sql string, args ...any) *Query {
+	return &Query{
+		sql,
+		args,
+	}
+}
+
 // 包装后的查询函数
-func ForEach[T any](fn func(*sql.Rows) T, cmd string, args ...any) (result []T) {
-	rows := panicSecond(db.Query(cmd, args...))
+func (q *Query) ForEach(reader Reader, fns ...func() bool) bool {
+	// 查询并判错
+	rows := panicSecond(db.Query(q.sql, q.args...))
 	defer rows.Close()
 
 	// 逐条获取值
 	if rows != nil {
 		for rows.Next() {
-			result = append(result, fn(rows))
+			reader.ReadRow(rows)
+			for _, fn := range fns {
+				if !fn() {
+					return false
+				}
+			}
 		}
 	}
-	return
+	return true
 }

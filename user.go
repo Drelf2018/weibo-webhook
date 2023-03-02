@@ -15,6 +15,10 @@ type User struct {
 	File  string `form:"file" json:"file"`
 }
 
+func (user *User) ReadRow(row *sql.Rows) {
+	printErr(row.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &user.File))
+}
+
 // 向数据库插入一位用户。
 func (user User) Insert() (sql.Result, error) {
 	return UserStmt.Exec(user.Uid, user.Token, user.Level, user.XP, user.File)
@@ -31,28 +35,24 @@ func (user User) Update(key, value any) (sql.Result, error) {
 }
 
 // 新建用户
-func NewUserByUID(uid int64) (user *User, err error) {
+func NewUser(uid int64) (user *User, err error) {
 	user = &User{uid, uuid.NewV4().String(), 5, 0, ""}
 	_, err = user.Insert()
 	return
 }
 
 // 根据 Key 返回 User 对象
-func GetUserByKey(key string, val any) (user User) {
-	users := ForEach(func(rows *sql.Rows) (user User) {
-		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &user.File)
-		return
-	}, "select * from users where "+key+"=$1", val)
-	if len(users) > 0 {
-		return users[0]
-	}
+func GetUser(key string, val any) (user User) {
+	NewQuery("select * from users where "+key+"=$1", val).ForEach(&user)
 	return
 }
 
 // 返回所有 User 对象
-func GetAllUsers() []User {
-	return ForEach(func(rows *sql.Rows) (user User) {
-		rows.Scan(&user.Uid, &user.Token, &user.Level, &user.XP, &user.File)
-		return
-	}, "select * from users")
+func GetAllUsers() (users []User) {
+	var user User
+	NewQuery("select * from users").ForEach(&user, func() bool {
+		users = append(users, user)
+		return true
+	})
+	return
 }
