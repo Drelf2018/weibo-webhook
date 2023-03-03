@@ -140,8 +140,6 @@ func (post *Post) Save(user *User) (int64, string) {
 	}
 
 	if finalPost := monitor.GetPost(); finalPost != nil {
-		// 推送
-		go Webhook(finalPost)
 		// 插入
 		finalPost.Insert()
 		// 清理占用
@@ -159,6 +157,8 @@ func (post *Post) Insert() string {
 	}
 	// 下个图先
 	go DownloadAll(post.PicUrls, post.Face, post.Pendant)
+	// 推送
+	go Webhook(post)
 	// 先把儿子插进去先
 	repostID := post.Repost.Insert()
 	// 看下自己在不在数据库 用来判断评论重复的
