@@ -19,6 +19,14 @@ type Yml struct {
 	Jobs      []Job    `form:"jobs" yaml:"jobs"`
 }
 
+var ContentJob = Job{
+	"",
+	"GET",
+	"https://aliyun.nana7mi.link/content",
+	nil,
+	map[string]string{"text": ""},
+}
+
 func GetYmlByUser(filepath string) (config Yml) {
 	data, err := os.ReadFile(filepath)
 	if printErr(err) {
@@ -27,12 +35,16 @@ func GetYmlByUser(filepath string) (config Yml) {
 	return
 }
 
-func GetJobsByUser(filepath, pid string) []Job {
-	yml := GetYmlByUser(ymlFolder + filepath)
-	for _, id := range yml.Listening {
-		if id == pid {
-			return yml.Jobs
+func GetJobs(pid string) (jobs []Job) {
+	var user User
+	NewQuery("select * from users where file != ''").ForEach(&user, func() bool {
+		yml := GetYmlByUser(ymlFolder + user.File)
+		for _, id := range yml.Listening {
+			if id == pid {
+				jobs = append(jobs, yml.Jobs...)
+			}
 		}
-	}
-	return []Job{}
+		return true
+	})
+	return
 }
