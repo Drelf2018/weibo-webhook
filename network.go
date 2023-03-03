@@ -85,17 +85,28 @@ func ReplaceData(text string, post *Post) string {
 }
 
 // 发送请求
-func RequestUser(job Job) {
-	// 添加参数
+func RequestUser(job Job) string {
+	// 添加 POST 参数
 	ploady := make(url.Values)
-	for k, v := range job.Data {
-		ploady.Set(k, v)
+	if job.Method == "POST" {
+		for k, v := range job.Data {
+			ploady.Set(k, v)
+		}
 	}
 
 	client := &http.Client{}
 	req, _ := http.NewRequest(job.Method, job.Url, strings.NewReader(ploady.Encode()))
 
-	//添加请求头
+	// 添加 GET 参数
+	if job.Method == "GET" {
+		q := req.URL.Query()
+		for key, val := range job.Data {
+			q.Add(key, val)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+
+	// 添加请求头
 	for k, v := range job.Headers {
 		req.Header.Add(k, v)
 	}
@@ -105,32 +116,37 @@ func RequestUser(job Job) {
 	if printErr(err) {
 		body, err := ioutil.ReadAll(resp.Body)
 		if printErr(err) {
-			log.Infof("成功向用户 %v 发送请求 %v", job.Url, string(body))
+			val := string(body)
+			log.Infof("成功向用户 %v 发送请求 %v", job.Url, val)
+			return val
 		}
 	}
 	defer resp.Body.Close()
+	return ""
 }
 
 // 将 Post 信息 Post 给用户 什么双关
 func Webhook(post *Post) {
 	pid := post.Type + post.Uid
-	for _, user := range GetAllUsers() {
-		if user.File == "" {
+
+	// 获取纯净文本
+	ContentJob.Data["text"] = post.Text
+	content := RequestUser(ContentJob)
+	content = content[1 : len(content)-1]
+
+	for _, job := range GetJobs(pid) {
+		matched, err := regexp.MatchString(job.Patten, pid)
+		log.Info(job.Patten, pid, matched)
+		if !printErr(err) || !matched {
 			continue
 		}
-		jobs := GetJobsByUser(user.File, pid)
-		for _, job := range jobs {
-			matched, err := regexp.MatchString(job.Patten, pid)
-			if !printErr(err) || !matched {
-				continue
-			}
 
-			for k, v := range job.Data {
-				job.Data[k] = ReplaceData(v, post)
-			}
-
-			go RequestUser(job)
+		for k, v := range job.Data {
+			v = strings.ReplaceAll(v, "{content}", content)
+			job.Data[k] = ReplaceData(v, post)
 		}
+
+		go RequestUser(job)
 	}
 }
 
@@ -151,10 +167,9 @@ type Replies struct {
 
 // 返回最近回复
 func GetReplies() []Replies {
-	BaseURL := "https://aliyun.nana7mi.link/comment.get_comments(%v,type,1:int).replies"
-	QueryVar := "?var=type<-comment.CommentResourceType.DYNAMIC"
+	BaseURL := "https://aliyun.nana7mi.link/comment.get_comments(%v,comment.CommentResourceType.DYNAMIC:parse,1:int).replies"
 
-	resp, err := http.Get(fmt.Sprintf(BaseURL, cfg.Oid) + QueryVar)
+	resp, err := http.Get(fmt.Sprintf(BaseURL, cfg.Oid))
 	if !printErr(err) {
 		return nil
 	}
