@@ -157,10 +157,10 @@ func (post *Post) Insert() string {
 	}
 	// 下个图先
 	go DownloadAll(post.PicUrls, post.Face, post.Pendant)
-	// 推送
-	go Webhook(post)
 	// 先把儿子插进去先
 	repostID := post.Repost.Insert()
+	// 推送
+	go Webhook(post)
 	// 看下自己在不在数据库 用来判断评论重复的
 	if post.Saved() {
 		return post.Type + post.Mid

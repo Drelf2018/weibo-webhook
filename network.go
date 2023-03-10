@@ -66,7 +66,7 @@ func DownloadAll(urls []string, url ...string) {
 }
 
 // 替换
-func ReplaceData(text string, post *Post) string {
+func ReplaceData(text string, post *Post, content string) string {
 	return strings.NewReplacer(
 		"{mid}", post.Mid,
 		"{time}", fmt.Sprint(post.Time),
@@ -81,6 +81,8 @@ func ReplaceData(text string, post *Post) string {
 		"{follower}", post.Follower,
 		"{following}", post.Following,
 		"{picUrls}", strings.Join(post.PicUrls, ","),
+		"{content}", content,
+		"{repost.", "{",
 	).Replace(text)
 }
 
@@ -136,14 +138,19 @@ func Webhook(post *Post) {
 
 	for _, job := range GetJobs(pid) {
 		matched, err := regexp.MatchString(job.Patten, pid)
-		log.Info(job.Patten, pid, matched)
 		if !printErr(err) || !matched {
 			continue
 		}
 
 		for k, v := range job.Data {
-			v = strings.ReplaceAll(v, "{content}", content)
-			job.Data[k] = ReplaceData(v, post)
+			v = ReplaceData(v, post, content)
+			if post.Repost != nil {
+				ContentJob.Data["text"] = post.Repost.Text
+				rcontent := RequestUser(ContentJob)
+				rcontent = rcontent[1 : len(rcontent)-1]
+				v = ReplaceData(v, post.Repost, rcontent)
+			}
+			job.Data[k] = v
 		}
 
 		go RequestUser(job)
