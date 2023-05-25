@@ -119,3 +119,41 @@ func SimilarText(first, second string) float64 {
 	sim := similarText(first, second, l1, l2)
 	return float64(sim*2) / float64(l1+l2)
 }
+
+// 字符串前后去指定字符
+//
+// 参考: https://blog.csdn.net/a1053904672/article/details/90758573
+func RemoveChars(s_ string, chars_ string) string {
+	s, chars := []rune(s_), []rune(chars_)
+	length := len(s)
+	max := len(s) - 1
+	l, r := true, true //标记当左端或者右端找到正常字符后就停止继续寻找
+	start, end := 0, max
+	tmpEnd := 0
+	charset := make(map[rune]bool) //创建字符集，也就是唯一的字符，方便后面判断是否存在
+	for i := 0; i < len(chars); i++ {
+		charset[chars[i]] = true
+	}
+	for i := 0; i < length; i++ {
+		if _, exist := charset[s[i]]; l && !exist {
+			start = i
+			l = false
+		}
+		tmpEnd = max - i
+		if _, exist := charset[s[tmpEnd]]; r && !exist {
+			end = tmpEnd
+			r = false
+		}
+		if !l && !r {
+			break
+		}
+	}
+	if l && r { // 如果左端和右端都没找到正常字符，那么表示该字符串没有正常字符
+		return ""
+	}
+	return string(s[start : end+1])
+}
+
+func Strip(s string) string {
+	return RemoveChars(s, " \n")
+}

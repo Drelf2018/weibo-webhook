@@ -124,7 +124,7 @@ func RequestUser(job Job) string {
 		}
 	}
 	defer resp.Body.Close()
-	return ""
+	return job.Data["text"]
 }
 
 // 将 Post 信息 Post 给用户 什么双关
@@ -136,6 +136,13 @@ func Webhook(post *Post) {
 	content := RequestUser(ContentJob)
 	content = content[1 : len(content)-1]
 
+	if post.Repost == nil {
+		post.Repost = &Post{}
+	}
+	ContentJob.Data["text"] = post.Repost.Text
+	rcontent := RequestUser(ContentJob)
+	rcontent = rcontent[1 : len(rcontent)-1]
+
 	for _, job := range GetJobs(pid) {
 		matched, err := regexp.MatchString(job.Patten, pid)
 		if !printErr(err) || !matched {
@@ -144,15 +151,9 @@ func Webhook(post *Post) {
 
 		for k, v := range job.Data {
 			v = ReplaceData(v, post, content)
-			if post.Repost != nil {
-				ContentJob.Data["text"] = post.Repost.Text
-				rcontent := RequestUser(ContentJob)
-				rcontent = rcontent[1 : len(rcontent)-1]
-				v = ReplaceData(v, post.Repost, rcontent)
-			}
-			job.Data[k] = v
+			v = ReplaceData(v, post.Repost, rcontent)
+			job.Data[k] = Strip(v)
 		}
-
 		go RequestUser(job)
 	}
 }
