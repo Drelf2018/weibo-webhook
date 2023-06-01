@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-//判断文件夹是否存在
+// 判断文件夹是否存在
 func MakeDir(path string) {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
@@ -23,7 +23,7 @@ func MakeDir(path string) {
 
 // 解析网址为本地
 func Url2Local(url string) string {
-	return imageFolder + "/" + strings.Split(path.Base(url), "?")[0]
+	return cfg.Resource.Image + "/" + strings.Split(path.Base(url), "?")[0]
 }
 
 // FileExists 判断一个文件是否存在
@@ -116,6 +116,7 @@ func RequestUser(job Job) string {
 
 	resp, err := client.Do(req)
 	if printErr(err) {
+		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if printErr(err) {
 			val := string(body)
@@ -123,7 +124,6 @@ func RequestUser(job Job) string {
 			return val
 		}
 	}
-	defer resp.Body.Close()
 	return job.Data["text"]
 }
 
@@ -132,16 +132,12 @@ func Webhook(post *Post) {
 	pid := post.Type + post.Uid
 
 	// 获取纯净文本
-	ContentJob.Data["text"] = post.Text
-	content := RequestUser(ContentJob)
-	content = content[1 : len(content)-1]
+	content := GetClearContent(post.Text)
 
 	if post.Repost == nil {
 		post.Repost = &Post{}
 	}
-	ContentJob.Data["text"] = post.Repost.Text
-	rcontent := RequestUser(ContentJob)
-	rcontent = rcontent[1 : len(rcontent)-1]
+	rcontent := GetClearContent(post.Repost.Text)
 
 	for _, job := range GetJobs(pid) {
 		matched, err := regexp.MatchString(job.Patten, pid)

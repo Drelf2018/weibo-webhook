@@ -3,36 +3,62 @@ package webhook
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
-	Oid      int64
-	User     string
-	Password string
-	DBname   string
-	Debug    bool
-}
-
-// 获取命令行参数
-func (cfg *Config) Pasre() int64 {
-	flag.Int64Var(&cfg.Oid, "oid", -1, "验证动态oid")
-	flag.StringVar(&cfg.User, "user", "postgres", "用户名")
-	flag.StringVar(&cfg.Password, "password", "postgres", "密码")
-	flag.StringVar(&cfg.DBname, "dbname", "", "库名")
-	flag.BoolVar(&cfg.Debug, "debug", false, "是否开启 debug 模式")
-	flag.Parse()
-	return cfg.Oid
+	Oid    string
+	Debug  bool
+	Server struct {
+		Url  string
+		Port string
+	}
+	Database struct {
+		Driver   string
+		DBname   string
+		User     string
+		Password string
+	}
+	Resource struct {
+		Image string
+		Yml   string
+	}
 }
 
 // 返回驱动器
 func (cfg Config) GetDriver() (string, string) {
-	if cfg.DBname == "" {
-		return "sqlite3", "./sqlite3.db"
-	}
-	return "postgres", cfg.Key()
+	return cfg.Database.Driver, func() string {
+		switch cfg.Database.Driver {
+		case "sqlite3":
+			return cfg.Database.DBname
+		case "postgres":
+			return cfg.Key()
+		default:
+			return ""
+		}
+	}()
 }
 
 // Postgres 数据库所需参数
 func (cfg Config) Key() string {
-	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cfg.User, cfg.Password, cfg.DBname)
+	cdb := cfg.Database
+	return fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", cdb.User, cdb.Password, cdb.DBname)
+}
+
+var cfg = GetConfig()
+
+// 获取命令行参数
+func FilePath() (filepath string) {
+	flag.StringVar(&filepath, "config", "config.yml", "配置文件路径")
+	flag.Parse()
+	return
+}
+
+// 读取配置文件
+func GetConfig() (conf Config) {
+	yamlFile := panicSecond(ioutil.ReadFile(FilePath()))
+	panicErr(yaml.Unmarshal(yamlFile, &conf))
+	return
 }

@@ -290,7 +290,7 @@ func UpdateConfig(c *gin.Context) {
 
 	filename := "/" + uuid.NewV4().String() + ".yml"
 
-	file := panicSecond(os.Create(ymlFolder + filename))
+	file := panicSecond(os.Create(cfg.Resource.Yml + filename))
 	defer file.Close()
 
 	enc := yaml.NewEncoder(file)
@@ -323,13 +323,6 @@ func Cors() gin.HandlerFunc {
 	}
 }
 
-// 全局配置
-var cfg Config
-
-// 资源文件夹
-var ymlFolder = "./config"
-var imageFolder = "./image"
-
 // 博文更新时间
 var UpdateTime = make(map[int64]int64)
 
@@ -338,16 +331,16 @@ var RandomToken = make(map[string][2]string)
 
 func init() {
 	// 从命令行读取数据库连接参数
-	if cfg.Pasre() == -1 {
+	if cfg.Oid == "" {
 		panic("请填写动态oid")
 	}
 
 	// 初始化文件夹
-	MakeDir(ymlFolder)
-	MakeDir(imageFolder)
+	MakeDir(cfg.Resource.Yml)
+	MakeDir(cfg.Resource.Image)
 }
 
-func Run(addr ...string) {
+func Run() {
 	// 运行 gin 服务器
 	gin.SetMode(Any(cfg.Debug, gin.DebugMode, gin.ReleaseMode))
 
@@ -356,9 +349,9 @@ func Run(addr ...string) {
 	// 跨域设置
 	r.Use(Cors())
 
-	r.Static("yml", ymlFolder)
-	r.Static("image", imageFolder)
-	r.StaticFile("favicon.ico", imageFolder+"/favicon.ico")
+	r.Static("yml", cfg.Resource.Yml)
+	r.Static("image", cfg.Resource.Image)
+	r.StaticFile("favicon.ico", cfg.Resource.Image+"/favicon.ico")
 
 	// 解析图片网址并返回文件
 	// 参考 https://blog.csdn.net/kilmerfun/article/details/123943070 https://blog.csdn.net/weixin_52690231/article/details/124109518
@@ -374,5 +367,5 @@ func Run(addr ...string) {
 	r.POST("update", UpdatePost)
 	r.POST("config", UpdateConfig)
 
-	r.Run(addr...) // listen and serve on 0.0.0.0:8080
+	r.Run(cfg.Server.Url + ":" + cfg.Server.Port) // listen and serve on 0.0.0.0:8080
 }

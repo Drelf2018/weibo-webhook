@@ -3,8 +3,10 @@ package webhook
 import (
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/sirupsen/logrus"
 )
@@ -156,4 +158,21 @@ func RemoveChars(s_ string, chars_ string) string {
 
 func Strip(s string) string {
 	return RemoveChars(s, " \n")
+}
+
+func GetClearContent(original string) string {
+	html := strings.NewReader("<div id=\"post\">" + original + "</div>")
+	doc, err := goquery.NewDocumentFromReader(html)
+	if !printErr(err) {
+		return original
+	}
+	doc.Find("#post .url-icon").Each(
+		func(i int, s *goquery.Selection) {
+			alt, ok := s.Find("img").Attr("alt")
+			if ok {
+				s.SetText(alt)
+			}
+		},
+	)
+	return doc.Text()
 }
